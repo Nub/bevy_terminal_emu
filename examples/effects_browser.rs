@@ -34,17 +34,78 @@ struct EffectEntry {
     active: bool,
 }
 
+/// Region preset for targeting effects to a sub-area.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RegionPreset {
+    Full,
+    LeftHalf,
+    RightHalf,
+    TopHalf,
+    BottomHalf,
+    Center,
+}
+
+impl RegionPreset {
+    const ALL: [RegionPreset; 6] = [
+        RegionPreset::Full,
+        RegionPreset::LeftHalf,
+        RegionPreset::RightHalf,
+        RegionPreset::TopHalf,
+        RegionPreset::BottomHalf,
+        RegionPreset::Center,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            RegionPreset::Full => "Full",
+            RegionPreset::LeftHalf => "Left Half",
+            RegionPreset::RightHalf => "Right Half",
+            RegionPreset::TopHalf => "Top Half",
+            RegionPreset::BottomHalf => "Bottom Half",
+            RegionPreset::Center => "Center",
+        }
+    }
+
+    fn to_effect_region(self) -> EffectRegion {
+        match self {
+            RegionPreset::Full => EffectRegion::all(),
+            RegionPreset::LeftHalf => EffectRegion {
+                include: vec![GridRect { col: 0, row: 0, width: 40, height: 24 }],
+                exclude: vec![],
+            },
+            RegionPreset::RightHalf => EffectRegion {
+                include: vec![GridRect { col: 40, row: 0, width: 40, height: 24 }],
+                exclude: vec![],
+            },
+            RegionPreset::TopHalf => EffectRegion {
+                include: vec![GridRect { col: 0, row: 0, width: 80, height: 12 }],
+                exclude: vec![],
+            },
+            RegionPreset::BottomHalf => EffectRegion {
+                include: vec![GridRect { col: 0, row: 12, width: 80, height: 12 }],
+                exclude: vec![],
+            },
+            RegionPreset::Center => EffectRegion {
+                include: vec![GridRect { col: 20, row: 6, width: 40, height: 12 }],
+                exclude: vec![],
+            },
+        }
+    }
+}
+
 /// Browser UI state.
 #[derive(Resource)]
 struct BrowserState {
     selected: usize,
     effects: Vec<EffectEntry>,
+    region_index: usize,
 }
 
 impl BrowserState {
     fn new() -> Self {
         Self {
             selected: 0,
+            region_index: 0,
             effects: vec![
                 EffectEntry {
                     name: "Wave",
@@ -91,8 +152,17 @@ impl BrowserState {
                     description: "Diagonal swipe across screen",
                     active: false,
                 },
+                EffectEntry {
+                    name: "Explode",
+                    description: "Chaotic explosion with random spin",
+                    active: false,
+                },
             ],
         }
+    }
+
+    fn current_region(&self) -> RegionPreset {
+        RegionPreset::ALL[self.region_index]
     }
 }
 
@@ -102,7 +172,13 @@ struct ActiveEffectEntities {
     map: HashMap<usize, Entity>,
 }
 
-fn handle_input(mut queue: ResMut<TerminalInputQueue>, mut state: ResMut<BrowserState>) {
+fn handle_input(
+    mut queue: ResMut<TerminalInputQueue>,
+    mut state: ResMut<BrowserState>,
+    mut active: ResMut<ActiveEffectEntities>,
+    mut commands: Commands,
+    cells: Query<Entity, With<TerminalCell>>,
+) {
     while let Some(event) = queue.events.pop_front() {
         if let terminput::Event::Key(key_event) = event {
             if key_event.kind != terminput::KeyEventKind::Press {
@@ -128,6 +204,24 @@ fn handle_input(mut queue: ResMut<TerminalInputQueue>, mut state: ResMut<Browser
                         effect.active = false;
                     }
                 }
+                terminput::KeyCode::Char('e') => {
+                    // Cycle region preset
+                    state.region_index = (state.region_index + 1) % RegionPreset::ALL.len();
+
+                    // Despawn all active effects so they respawn with the new region
+                    for entity in active.map.values() {
+                        commands.entity(*entity).despawn();
+                    }
+                    active.map.clear();
+
+                    // Remove CellVelocity from all cells (in case Gravity was active)
+                    for cell_entity in cells.iter() {
+                        commands.entity(cell_entity).remove::<CellVelocity>();
+                    }
+
+                    // Re-activate effects that were toggled on so sync_effects respawns them
+                    // (they're still marked active in state, but no longer in active.map)
+                }
                 _ => {}
             }
         }
@@ -142,30 +236,26 @@ fn sync_effects(
     mut collapses: Query<&mut Collapse>,
     mut scatters: Query<&mut Scatter>,
     mut slashes: Query<&mut Slash>,
+    mut explodes: Query<&mut Explode>,
 ) {
+    let region = state.current_region().to_effect_region();
+
     for (idx, effect) in state.effects.iter().enumerate() {
         let is_spawned = active.map.contains_key(&idx);
 
         if effect.active && !is_spawned {
-            // Spawn the effect entity
+            // Spawn the effect entity with the current region
             let entity = match idx {
-                0 => commands.spawn((Wave::default(), EffectRegion::all())).id(),
-                1 => commands.spawn((Ripple::default(), EffectRegion::all())).id(),
-                2 => commands
-                    .spawn((Collapse::default(), EffectRegion::all()))
-                    .id(),
-                3 => commands
-                    .spawn((Gravity::default(), EffectRegion::all()))
-                    .id(),
-                4 => commands.spawn((Glitch::default(), EffectRegion::all())).id(),
-                5 => commands
-                    .spawn((Scatter::default(), EffectRegion::all()))
-                    .id(),
-                6 => commands
-                    .spawn((Breathe::default(), EffectRegion::all()))
-                    .id(),
-                7 => commands.spawn((Jitter::default(), EffectRegion::all())).id(),
-                8 => commands.spawn((Slash::default(), EffectRegion::all())).id(),
+                0 => commands.spawn((Wave::default(), region.clone())).id(),
+                1 => commands.spawn((Ripple::default(), region.clone())).id(),
+                2 => commands.spawn((Collapse::default(), region.clone())).id(),
+                3 => commands.spawn((Gravity::default(), region.clone())).id(),
+                4 => commands.spawn((Glitch::default(), region.clone())).id(),
+                5 => commands.spawn((Scatter::default(), region.clone())).id(),
+                6 => commands.spawn((Breathe::default(), region.clone())).id(),
+                7 => commands.spawn((Jitter::default(), region.clone())).id(),
+                8 => commands.spawn((Slash::default(), region.clone())).id(),
+                9 => commands.spawn((Explode::default(), region.clone())).id(),
                 _ => unreachable!(),
             };
             active.map.insert(idx, entity);
@@ -177,7 +267,7 @@ fn sync_effects(
                 }
             }
         } else if effect.active && is_spawned {
-            // For Collapse/Scatter: re-toggling resets the animation
+            // For one-shot effects: re-toggling resets the animation
             if idx == 2 {
                 if let Some(&entity) = active.map.get(&idx) {
                     if let Ok(mut collapse) = collapses.get_mut(entity) {
@@ -204,6 +294,16 @@ fn sync_effects(
                         if !slash.active {
                             slash.elapsed = 0.0;
                             slash.active = true;
+                        }
+                    }
+                }
+            }
+            if idx == 9 {
+                if let Some(&entity) = active.map.get(&idx) {
+                    if let Ok(mut explode) = explodes.get_mut(entity) {
+                        if !explode.active {
+                            explode.elapsed = 0.0;
+                            explode.active = true;
                         }
                     }
                 }
@@ -263,6 +363,15 @@ fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>) {
                 )]));
             }
 
+            // Region info below effect list
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                format!("  Region: {}", state.current_region().name()),
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            )]));
+
             let list_block = Block::default()
                 .title(" Effects ")
                 .borders(Borders::ALL);
@@ -287,10 +396,11 @@ fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>) {
                         .add_modifier(Modifier::BOLD),
                 )]),
                 Line::from(""),
-                Line::from("  Up/Down    Navigate"),
+                Line::from("  Up/Down       Navigate"),
                 Line::from("  Enter/Space   Toggle"),
-                Line::from("  r          Reset all"),
-                Line::from("  Ctrl+C     Quit"),
+                Line::from("  e             Cycle region"),
+                Line::from("  r             Reset all"),
+                Line::from("  Ctrl+C        Quit"),
             ];
 
             let demo_block = Block::default()

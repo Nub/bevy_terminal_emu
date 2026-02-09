@@ -20,6 +20,7 @@ pub mod prelude {
     pub use crate::backend::BevyBackend;
     pub use crate::effects::breathe::Breathe;
     pub use crate::effects::collapse::Collapse;
+    pub use crate::effects::explode::Explode;
     pub use crate::effects::glitch::Glitch;
     pub use crate::effects::gravity::{CellVelocity, Gravity};
     pub use crate::effects::jitter::Jitter;
@@ -151,6 +152,7 @@ impl Plugin for TerminalEmuPlugin {
                 (
                     effects::breathe::breathe_system,
                     effects::collapse::collapse_system,
+                    effects::explode::explode_system,
                     effects::glitch::glitch_system,
                     effects::gravity::gravity_system,
                     effects::jitter::jitter_system,

@@ -1,5 +1,6 @@
 pub mod breathe;
 pub mod collapse;
+pub mod explode;
 pub mod glitch;
 pub mod gravity;
 pub mod jitter;
