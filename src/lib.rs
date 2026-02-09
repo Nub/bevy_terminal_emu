@@ -141,7 +141,9 @@ impl Plugin for TerminalEmuPlugin {
             )
             .add_systems(
                 Update,
-                sync::sync_buffer_to_entities.in_set(TerminalSet::Sync),
+                (atlas::rebuild_font_atlas, sync::sync_buffer_to_entities)
+                    .chain()
+                    .in_set(TerminalSet::Sync),
             )
             .add_systems(
                 Update,

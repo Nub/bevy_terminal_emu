@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use ab_glyph::{Font, FontRef, ScaleFont};
-use bevy::prelude::*;
 use bevy::asset::RenderAssetUsages;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+
+use crate::grid::{BackgroundSprite, BaseTransform, CellEntityIndex, ForegroundSprite, GridPosition};
 
 /// Holds the generated font atlas texture, layout, and glyph mapping.
 #[derive(Resource)]
@@ -12,6 +14,7 @@ pub struct FontAtlasResource {
     pub layout: Handle<TextureAtlasLayout>,
     pub glyph_map: HashMap<char, usize>,
     pub cell_size: UVec2,
+    pub font_size: f32,
 }
 
 /// The embedded monospace font bytes (JetBrains Mono).
@@ -25,18 +28,20 @@ const GLYPH_COUNT: usize = (GLYPH_END - GLYPH_START + 1) as usize; // 95
 /// Number of columns in the atlas grid.
 const ATLAS_COLS: u32 = 16;
 
-/// Generate the font atlas as a startup system.
-pub fn generate_font_atlas(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
-    config: Res<crate::TerminalConfig>,
-) {
+/// Raw atlas data before it's stored as Bevy assets.
+struct AtlasData {
+    image: Image,
+    layout: TextureAtlasLayout,
+    glyph_map: HashMap<char, usize>,
+    cell_size: UVec2,
+}
+
+/// Build the font atlas texture and layout for a given font size.
+fn build_atlas_data(font_size: f32) -> AtlasData {
     let font = FontRef::try_from_slice(FONT_BYTES).expect("Failed to parse embedded font");
-    let scale = ab_glyph::PxScale::from(config.font_size);
+    let scale = ab_glyph::PxScale::from(font_size);
     let scaled_font = font.as_scaled(scale);
 
-    // Determine cell size from the advance width of 'M' and the font height.
     let glyph_id = font.glyph_id('M');
     let cell_w = scaled_font.h_advance(glyph_id).ceil() as u32;
     let cell_h = scaled_font.height().ceil() as u32;
@@ -46,7 +51,6 @@ pub fn generate_font_atlas(
     let atlas_width = cell_w * ATLAS_COLS;
     let atlas_height = cell_h * atlas_rows;
 
-    // RGBA8 buffer, initialized to transparent
     let mut pixel_data = vec![0u8; (atlas_width * atlas_height * 4) as usize];
     let mut glyph_map = HashMap::new();
 
@@ -100,15 +104,100 @@ pub fn generate_font_atlas(
         RenderAssetUsages::default(),
     );
 
-    let image_handle = images.add(image);
-
     let layout = TextureAtlasLayout::from_grid(cell_size, ATLAS_COLS, atlas_rows, None, None);
-    let layout_handle = layouts.add(layout);
+
+    AtlasData {
+        image,
+        layout,
+        glyph_map,
+        cell_size,
+    }
+}
+
+/// Generate the font atlas as a startup system.
+pub fn generate_font_atlas(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
+    config: Res<crate::TerminalConfig>,
+) {
+    let data = build_atlas_data(config.font_size);
+    let image_handle = images.add(data.image);
+    let layout_handle = layouts.add(data.layout);
 
     commands.insert_resource(FontAtlasResource {
         image: image_handle,
         layout: layout_handle,
-        glyph_map,
-        cell_size,
+        glyph_map: data.glyph_map,
+        cell_size: data.cell_size,
+        font_size: config.font_size,
     });
+}
+
+/// Detects when `TerminalConfig.font_size` has changed and rebuilds the atlas,
+/// cell positions, and sprite sizes to match.
+pub fn rebuild_font_atlas(
+    mut config: ResMut<crate::TerminalConfig>,
+    mut atlas: ResMut<FontAtlasResource>,
+    mut images: ResMut<Assets<Image>>,
+    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
+    cell_index: Res<CellEntityIndex>,
+    mut cell_query: Query<(&GridPosition, &mut BaseTransform, &mut Transform)>,
+    mut bg_query: Query<&mut Sprite, (With<BackgroundSprite>, Without<ForegroundSprite>)>,
+    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<BackgroundSprite>)>,
+    children_query: Query<&Children>,
+) {
+    if config.font_size == atlas.font_size {
+        return;
+    }
+
+    // Scale cell dimensions proportionally
+    let ratio = config.font_size / atlas.font_size;
+    config.cell_width *= ratio;
+    config.cell_height *= ratio;
+    config.origin = Vec2::new(
+        -(config.columns as f32 * config.cell_width) / 2.0,
+        (config.rows as f32 * config.cell_height) / 2.0,
+    );
+
+    // Rebuild the atlas at the new font size
+    let data = build_atlas_data(config.font_size);
+    let image_handle = images.add(data.image);
+    let layout_handle = layouts.add(data.layout);
+    atlas.image = image_handle.clone();
+    atlas.layout = layout_handle.clone();
+    atlas.glyph_map = data.glyph_map;
+    atlas.cell_size = data.cell_size;
+    atlas.font_size = config.font_size;
+
+    // Update all cell positions and child sprites
+    for (grid_pos, mut base_tf, mut transform) in cell_query.iter_mut() {
+        let world_x =
+            config.origin.x + (grid_pos.col as f32) * config.cell_width + config.cell_width / 2.0;
+        let world_y = config.origin.y
+            - (grid_pos.row as f32) * config.cell_height
+            - config.cell_height / 2.0;
+        let translation = Vec3::new(world_x, world_y, 0.0);
+        base_tf.translation = translation;
+        transform.translation = translation;
+
+        if let Some(entity) = cell_index.get(grid_pos.col, grid_pos.row) {
+            if let Ok(children) = children_query.get(entity) {
+                for child in children.iter() {
+                    if let Ok(mut bg_sprite) = bg_query.get_mut(child) {
+                        bg_sprite.custom_size =
+                            Some(Vec2::new(config.cell_width, config.cell_height));
+                    }
+                    if let Ok(mut fg_sprite) = fg_query.get_mut(child) {
+                        fg_sprite.custom_size =
+                            Some(Vec2::new(config.cell_width, config.cell_height));
+                        fg_sprite.image = image_handle.clone();
+                        if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
+                            tex_atlas.layout = layout_handle.clone();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

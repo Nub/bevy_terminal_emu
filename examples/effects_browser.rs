@@ -176,6 +176,7 @@ fn handle_input(
     mut queue: ResMut<TerminalInputQueue>,
     mut state: ResMut<BrowserState>,
     mut active: ResMut<ActiveEffectEntities>,
+    mut config: ResMut<TerminalConfig>,
     mut commands: Commands,
     cells: Query<Entity, With<TerminalCell>>,
 ) {
@@ -221,6 +222,16 @@ fn handle_input(
 
                     // Re-activate effects that were toggled on so sync_effects respawns them
                     // (they're still marked active in state, but no longer in active.map)
+                }
+                terminput::KeyCode::Char('=') | terminput::KeyCode::Char('+')
+                    if key_event.modifiers.contains(terminput::KeyModifiers::CTRL) =>
+                {
+                    config.font_size = (config.font_size + 2.0).min(48.0);
+                }
+                terminput::KeyCode::Char('-')
+                    if key_event.modifiers.contains(terminput::KeyModifiers::CTRL) =>
+                {
+                    config.font_size = (config.font_size - 2.0).max(8.0);
                 }
                 _ => {}
             }
@@ -324,7 +335,7 @@ fn sync_effects(
     }
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>) {
+fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>, config: Res<TerminalConfig>) {
     let mut terminal = terminal_res.0.lock().unwrap();
 
     terminal
@@ -386,8 +397,53 @@ fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>) {
                 Line::from("abcdefghijklmnopqrstuvwxyz"),
                 Line::from("0123456789 !@#$%^&*()"),
                 Line::from(""),
-                Line::from("The quick brown fox jumps"),
-                Line::from("over the lazy dog."),
+                Line::from(vec![Span::styled(
+                    "--- Color Swatch ---",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                // Foreground colors
+                Line::from(vec![
+                    Span::styled(" Red ", Style::default().fg(Color::Red)),
+                    Span::styled(" Green ", Style::default().fg(Color::Green)),
+                    Span::styled(" Blue ", Style::default().fg(Color::Blue)),
+                    Span::styled(" Yellow ", Style::default().fg(Color::Yellow)),
+                    Span::styled(" Cyan ", Style::default().fg(Color::Cyan)),
+                    Span::styled(" Magenta ", Style::default().fg(Color::Magenta)),
+                ]),
+                // Background colors
+                Line::from(vec![
+                    Span::styled(" Red ", Style::default().fg(Color::White).bg(Color::Red)),
+                    Span::styled(" Green ", Style::default().fg(Color::Black).bg(Color::Green)),
+                    Span::styled(" Blue ", Style::default().fg(Color::White).bg(Color::Blue)),
+                    Span::styled(" Yellow ", Style::default().fg(Color::Black).bg(Color::Yellow)),
+                    Span::styled(" Cyan ", Style::default().fg(Color::Black).bg(Color::Cyan)),
+                    Span::styled(" Magenta ", Style::default().fg(Color::White).bg(Color::Magenta)),
+                ]),
+                // RGB gradient
+                Line::from(vec![
+                    Span::styled("  ", Style::default().bg(Color::Rgb(255, 0, 0))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(255, 127, 0))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(255, 255, 0))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(0, 255, 0))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(0, 255, 255))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(0, 127, 255))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(0, 0, 255))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(127, 0, 255))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(255, 0, 255))),
+                    Span::styled("  ", Style::default().bg(Color::Rgb(255, 0, 127))),
+                ]),
+                // Styled text samples
+                Line::from(vec![
+                    Span::styled("Bold", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                    Span::raw(" "),
+                    Span::styled("Dim", Style::default().fg(Color::White).add_modifier(Modifier::DIM)),
+                    Span::raw(" "),
+                    Span::styled("Italic", Style::default().fg(Color::White).add_modifier(Modifier::ITALIC)),
+                    Span::raw(" "),
+                    Span::styled("Underline", Style::default().fg(Color::White).add_modifier(Modifier::UNDERLINED)),
+                ]),
                 Line::from(""),
                 Line::from(vec![Span::styled(
                     "--- Controls ---",
@@ -396,8 +452,11 @@ fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>) {
                         .add_modifier(Modifier::BOLD),
                 )]),
                 Line::from(""),
+                Line::from(format!("  Font size: {:.0}", config.font_size)),
+                Line::from(""),
                 Line::from("  Up/Down       Navigate"),
                 Line::from("  Enter/Space   Toggle"),
+                Line::from("  Ctrl+/-       Font size"),
                 Line::from("  e             Cycle region"),
                 Line::from("  r             Reset all"),
                 Line::from("  Ctrl+C        Quit"),
