@@ -1,0 +1,49 @@
+[package]
+name = "bevy_terminal_emu"
+version = "0.1.0"
+edition = "2024"
+description = "A Bevy library that renders ratatui apps where each character is an independent Bevy entity"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false, features = [
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_sprite_render",
+    "bevy_text",
+    "bevy_winit",
+    "keyboard",
+    "bevy_log",
+    "png",
+    "x11",
+    "wayland",
+] }
+ratatui = { version = "0.30", default-features = false }
+terminput = "0.3"
+ab_glyph = "0.2"
+
+[[example]]
+name = "effects_browser"
+path = "examples/effects_browser.rs"
+
+[[example]]
+name = "basic"
+path = "examples/basic.rs"
+
+[[example]]
+name = "counter"
+path = "examples/counter.rs"
+
+[[example]]
+name = "custom_effect"
+path = "examples/custom_effect.rs"
+
+[[example]]
+name = "debug"
+path = "examples/debug.rs"
+
+[[example]]
+name = "minimal_test"
+path = "examples/minimal_test.rs"
