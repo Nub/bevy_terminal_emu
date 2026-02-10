@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use super::EffectRegion;
-use crate::grid::{ForegroundSprite, GridPosition, TerminalCell};
+use crate::grid::{CellEntityIndex, ForegroundSprite, GridPosition, TerminalCell};
 
 /// Pulsing glow effect.
 ///
@@ -31,16 +31,25 @@ impl Default for Glow {
 pub fn glow_system(
     time: Res<Time>,
     effects: Query<(&Glow, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &Children, &mut Transform), With<TerminalCell>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    cell_index: Res<CellEntityIndex>,
     mut sprites: Query<&mut Sprite, With<ForegroundSprite>>,
 ) {
     let t = time.elapsed_secs();
+    let columns = cell_index.columns as usize;
 
     for (glow, region) in effects.iter() {
-        for (pos, children, mut transform) in cells.iter_mut() {
-            if !region.contains(pos.col, pos.row) {
+        for (idx, &parent_entity) in cell_index.entities.iter().enumerate() {
+            let col = (idx % columns) as u16;
+            let row = (idx / columns) as u16;
+
+            if !region.contains(col, row) {
                 continue;
             }
+
+            let Ok((pos, mut transform)) = cells.get_mut(parent_entity) else {
+                continue;
+            };
 
             let phase_offset = (pos.col as f32 * 0.5 + pos.row as f32 * 0.8) * glow.spread;
             let phase = std::f32::consts::TAU * glow.speed * t + phase_offset;
@@ -51,12 +60,11 @@ pub fn glow_system(
             transform.scale *= Vec3::splat(scale);
 
             // Alpha modulation on foreground sprite
-            for child in children.iter() {
-                if let Ok(mut sprite) = sprites.get_mut(child) {
-                    let base_alpha = sprite.color.alpha();
-                    let new_alpha = (base_alpha * (1.0 + glow.intensity * wave)).clamp(0.0, 1.0);
-                    sprite.color = sprite.color.with_alpha(new_alpha);
-                }
+            let fg_entity = cell_index.fg_entities[idx];
+            if let Ok(mut sprite) = sprites.get_mut(fg_entity) {
+                let base_alpha = sprite.color.alpha();
+                let new_alpha = (base_alpha * (1.0 + glow.intensity * wave)).clamp(0.0, 1.0);
+                sprite.color = sprite.color.with_alpha(new_alpha);
             }
         }
     }

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use super::EffectRegion;
-use crate::grid::{ForegroundSprite, GridPosition, TerminalCell};
+use crate::grid::{CellEntityIndex, ForegroundSprite};
 
 /// Rainbow color cycling effect.
 ///
@@ -33,28 +33,30 @@ impl Default for Rainbow {
 pub fn rainbow_system(
     time: Res<Time>,
     effects: Query<(&Rainbow, &EffectRegion)>,
-    cells: Query<(&GridPosition, &Children), With<TerminalCell>>,
+    cell_index: Res<CellEntityIndex>,
     mut sprites: Query<&mut Sprite, With<ForegroundSprite>>,
 ) {
     let t = time.elapsed_secs();
+    let columns = cell_index.columns as usize;
 
     for (rainbow, region) in effects.iter() {
-        for (pos, children) in cells.iter() {
-            if !region.contains(pos.col, pos.row) {
+        for (idx, &fg_entity) in cell_index.fg_entities.iter().enumerate() {
+            let col = (idx % columns) as u16;
+            let row = (idx / columns) as u16;
+
+            if !region.contains(col, row) {
                 continue;
             }
 
-            let hue = ((pos.col as f32 + pos.row as f32) * rainbow.spread + t * rainbow.speed)
+            let hue = ((col as f32 + row as f32) * rainbow.spread + t * rainbow.speed)
                 * 360.0
                 % 360.0;
 
             let color = Color::hsl(hue, rainbow.saturation, rainbow.lightness);
 
-            for child in children.iter() {
-                if let Ok(mut sprite) = sprites.get_mut(child) {
-                    let alpha = sprite.color.alpha();
-                    sprite.color = color.with_alpha(alpha);
-                }
+            if let Ok(mut sprite) = sprites.get_mut(fg_entity) {
+                let alpha = sprite.color.alpha();
+                sprite.color = color.with_alpha(alpha);
             }
         }
     }

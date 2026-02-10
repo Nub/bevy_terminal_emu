@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use super::EffectRegion;
-use crate::grid::{ForegroundSprite, GridPosition, TerminalCell};
+use crate::grid::{CellEntityIndex, ForegroundSprite};
 
 /// Sweeping highlight band effect.
 ///
@@ -39,10 +39,11 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 pub fn shiny_system(
     time: Res<Time>,
     effects: Query<(&Shiny, &EffectRegion)>,
-    cells: Query<(&GridPosition, &Children), With<TerminalCell>>,
+    cell_index: Res<CellEntityIndex>,
     mut sprites: Query<&mut Sprite, With<ForegroundSprite>>,
 ) {
     let t = time.elapsed_secs();
+    let columns = cell_index.columns as usize;
 
     for (shiny, region) in effects.iter() {
         let cos_a = shiny.angle.cos();
@@ -52,13 +53,16 @@ pub fn shiny_system(
         let band_pos = (t * shiny.speed) % diagonal - shiny.width;
         let half_width = shiny.width / 2.0;
 
-        for (pos, children) in cells.iter() {
-            if !region.contains(pos.col, pos.row) {
+        for (idx, &fg_entity) in cell_index.fg_entities.iter().enumerate() {
+            let col = (idx % columns) as u16;
+            let row = (idx / columns) as u16;
+
+            if !region.contains(col, row) {
                 continue;
             }
 
             // Project cell position onto the sweep direction
-            let proj = pos.col as f32 * cos_a + pos.row as f32 * sin_a;
+            let proj = col as f32 * cos_a + row as f32 * sin_a;
             let dist = (proj - band_pos).abs();
 
             if dist > half_width {
@@ -69,12 +73,10 @@ pub fn shiny_system(
             let falloff = 1.0 - smoothstep(0.0, half_width, dist);
             let boost = 1.0 + shiny.brightness * falloff;
 
-            for child in children.iter() {
-                if let Ok(mut sprite) = sprites.get_mut(child) {
-                    let [r, g, b, a] = sprite.color.to_srgba().to_f32_array();
-                    sprite.color =
-                        Color::srgba((r * boost).min(1.0), (g * boost).min(1.0), (b * boost).min(1.0), a);
-                }
+            if let Ok(mut sprite) = sprites.get_mut(fg_entity) {
+                let [r, g, b, a] = sprite.color.to_srgba().to_f32_array();
+                sprite.color =
+                    Color::srgba((r * boost).min(1.0), (g * boost).min(1.0), (b * boost).min(1.0), a);
             }
         }
     }

@@ -20,10 +20,8 @@ pub fn sync_buffer_to_entities(
     mut atlas: ResMut<FontAtlasResource>,
     cell_index: Res<CellEntityIndex>,
     mut sync_gen: ResMut<SyncGeneration>,
-    mut cell_query: Query<&mut CellStyle>,
-    mut bg_query: Query<&mut Sprite, (With<BackgroundSprite>, Without<ForegroundSprite>)>,
+    mut cell_query: Query<(&mut CellStyle, &mut Sprite), With<BackgroundSprite>>,
     mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<BackgroundSprite>)>,
-    children_query: Query<&Children>,
 ) {
     let mut terminal = terminal_res.0.lock().unwrap();
     let generation = terminal.backend().generation();
@@ -72,8 +70,8 @@ pub fn sync_buffer_to_entities(
             continue;
         };
 
-        // Update CellStyle only if values actually changed (avoids triggering change detection)
-        if let Ok(mut cell_style) = cell_query.get_mut(entity) {
+        // Update CellStyle + BG sprite on parent entity
+        if let Ok((mut cell_style, mut bg_sprite)) = cell_query.get_mut(entity) {
             if cell_style.fg != fg
                 || cell_style.bg != bg
                 || cell_style.bold != bold
@@ -90,45 +88,37 @@ pub fn sync_buffer_to_entities(
                 cell_style.dim = dim;
                 cell_style.symbol = symbol.to_string();
             }
+
+            if bg_sprite.color != bg {
+                bg_sprite.color = bg;
+            }
         }
 
-        // Update child sprites
-        if let Ok(children) = children_query.get(entity) {
+        // Update foreground sprite via direct entity lookup
+        let fg_entity = cell_index.fg_entities[idx];
+        if let Ok(mut fg_sprite) = fg_query.get_mut(fg_entity) {
             let target_fg = if dim { fg.with_alpha(0.5) } else { fg };
+            if fg_sprite.color != target_fg {
+                fg_sprite.color = target_fg;
+            }
 
-            for child in children.iter() {
-                // Update background sprite color only if changed
-                if let Ok(mut bg_sprite) = bg_query.get_mut(child) {
-                    if bg_sprite.color != bg {
-                        bg_sprite.color = bg;
+            // Look up glyph in atlas; queue unknown chars for next-frame expansion
+            let ch = symbol.chars().next().unwrap_or(' ');
+            let glyph_index = match atlas.glyph_map.get(&ch) {
+                Some(&glyph_idx) => glyph_idx,
+                None => {
+                    if ch != ' ' {
+                        new_glyphs.push(ch);
                     }
+                    space_index
                 }
+            };
 
-                // Update foreground sprite color and atlas index only if changed
-                if let Ok(mut fg_sprite) = fg_query.get_mut(child) {
-                    if fg_sprite.color != target_fg {
-                        fg_sprite.color = target_fg;
-                    }
-
-                    // Look up glyph in atlas; queue unknown chars for next-frame expansion
-                    let ch = symbol.chars().next().unwrap_or(' ');
-                    let glyph_index = match atlas.glyph_map.get(&ch) {
-                        Some(&glyph_idx) => glyph_idx,
-                        None => {
-                            if ch != ' ' {
-                                new_glyphs.push(ch);
-                            }
-                            space_index
-                        }
-                    };
-
-                    // Read atlas index immutably first, only write if different
-                    let current_index = fg_sprite.texture_atlas.as_ref().map(|ta| ta.index);
-                    if current_index != Some(glyph_index) {
-                        if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
-                            tex_atlas.index = glyph_index;
-                        }
-                    }
+            // Read atlas index immutably first, only write if different
+            let current_index = fg_sprite.texture_atlas.as_ref().map(|ta| ta.index);
+            if current_index != Some(glyph_index) {
+                if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
+                    tex_atlas.index = glyph_index;
                 }
             }
         }

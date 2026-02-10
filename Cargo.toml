@@ -24,6 +24,12 @@ ratatui = { version = "0.30", default-features = false }
 terminput = "0.3"
 ab_glyph = "0.2"
 
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+
 [[example]]
 name = "effects_browser"
 path = "examples/effects_browser.rs"

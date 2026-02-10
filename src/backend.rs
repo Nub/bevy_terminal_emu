@@ -65,8 +65,11 @@ impl BevyBackend {
     }
 
     /// Mark all cells as dirty (e.g. after atlas expansion requires full re-sync).
+    /// Also bumps the generation so the sync system processes the changes even
+    /// without a new `Terminal::draw()` call from the user.
     pub fn mark_all_dirty(&mut self) {
         self.dirty_cells.fill(true);
+        self.flush_generation += 1;
     }
 }
 

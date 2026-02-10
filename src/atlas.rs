@@ -5,7 +5,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::grid::{BackgroundSprite, BaseTransform, CellEntityIndex, ForegroundSprite, GridPosition};
+use crate::grid::{BackgroundSprite, BaseTransform, CellEntityIndex, ForegroundSprite, GridPosition, TerminalCell};
 
 /// Holds the generated font atlas texture, layout, and glyph mapping.
 #[derive(Resource)]
@@ -40,7 +40,6 @@ fn ascii_chars() -> Vec<char> {
     (0x20u8..=0x7E).map(|b| b as char).collect()
 }
 
-/// Compute the cell (width, height) in pixels for a given font and size.
 /// Compute the cell (width, height) in pixels for a given font and size.
 ///
 /// Uses exact font metrics (no rounding) so adjacent cells tile seamlessly.
@@ -182,7 +181,6 @@ pub fn expand_font_atlas(
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     cell_index: Res<CellEntityIndex>,
     mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<BackgroundSprite>)>,
-    children_query: Query<&Children>,
 ) {
     if atlas.pending_glyphs.is_empty() {
         return;
@@ -225,15 +223,11 @@ pub fn expand_font_atlas(
     atlas.glyph_count = data.glyph_count;
 
     // Update all foreground sprite handles to point to the new atlas
-    for &entity in &cell_index.entities {
-        if let Ok(children) = children_query.get(entity) {
-            for child in children.iter() {
-                if let Ok(mut fg_sprite) = fg_query.get_mut(child) {
-                    fg_sprite.image = image_handle.clone();
-                    if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
-                        tex_atlas.layout = layout_handle.clone();
-                    }
-                }
+    for &fg_entity in &cell_index.fg_entities {
+        if let Ok(mut fg_sprite) = fg_query.get_mut(fg_entity) {
+            fg_sprite.image = image_handle.clone();
+            if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
+                tex_atlas.layout = layout_handle.clone();
             }
         }
     }
@@ -251,10 +245,8 @@ pub fn rebuild_font_atlas(
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     cell_index: Res<CellEntityIndex>,
-    mut cell_query: Query<(&GridPosition, &mut BaseTransform, &mut Transform)>,
-    mut bg_query: Query<&mut Sprite, (With<BackgroundSprite>, Without<ForegroundSprite>)>,
-    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<BackgroundSprite>)>,
-    children_query: Query<&Children>,
+    mut parent_query: Query<(&GridPosition, &mut BaseTransform, &mut Transform, &mut Sprite), With<TerminalCell>>,
+    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<TerminalCell>)>,
 ) {
     if config.font_size == atlas.font_size {
         return;
@@ -277,9 +269,9 @@ pub fn rebuild_font_atlas(
     atlas.font_size = config.font_size;
     atlas.glyph_count = data.glyph_count;
 
-    // Update all cell positions and child sprites
+    // Update all cell positions and BG sprites on parent entities
     let bg_size = layout.bg_sprite_size();
-    for (grid_pos, mut base_tf, mut transform) in cell_query.iter_mut() {
+    for (grid_pos, mut base_tf, mut transform, mut bg_sprite) in parent_query.iter_mut() {
         let world_x =
             layout.origin.x + (grid_pos.col as f32) * layout.cell_width + layout.cell_width / 2.0;
         let world_y = layout.origin.y
@@ -288,22 +280,17 @@ pub fn rebuild_font_atlas(
         let translation = Vec3::new(world_x, world_y, 0.0);
         base_tf.translation = translation;
         transform.translation = translation;
+        bg_sprite.custom_size = Some(bg_size);
+    }
 
-        if let Some(entity) = cell_index.get(grid_pos.col, grid_pos.row) {
-            if let Ok(children) = children_query.get(entity) {
-                for child in children.iter() {
-                    if let Ok(mut bg_sprite) = bg_query.get_mut(child) {
-                        bg_sprite.custom_size = Some(bg_size);
-                    }
-                    if let Ok(mut fg_sprite) = fg_query.get_mut(child) {
-                        // No custom_size — atlas tile renders at natural pixel dimensions
-                        fg_sprite.custom_size = None;
-                        fg_sprite.image = image_handle.clone();
-                        if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
-                            tex_atlas.layout = layout_handle.clone();
-                        }
-                    }
-                }
+    // Update all FG sprites via direct entity lookup
+    for &fg_entity in &cell_index.fg_entities {
+        if let Ok(mut fg_sprite) = fg_query.get_mut(fg_entity) {
+            // No custom_size — atlas tile renders at natural pixel dimensions
+            fg_sprite.custom_size = None;
+            fg_sprite.image = image_handle.clone();
+            if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
+                tex_atlas.layout = layout_handle.clone();
             }
         }
     }
