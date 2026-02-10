@@ -89,6 +89,8 @@ pub fn spawn_grid(
     // Space glyph index (fallback to 0)
     let space_index = atlas.glyph_map.get(&' ').copied().unwrap_or(0);
 
+    let sprite_size = layout.sprite_size();
+
     for row in 0..config.rows {
         for col in 0..config.columns {
             let world_x =
@@ -116,7 +118,7 @@ pub fn spawn_grid(
                         BackgroundSprite,
                         Sprite::from_color(
                             Color::srgb(0.0, 0.0, 0.0),
-                            Vec2::new(layout.cell_width, layout.cell_height),
+                            sprite_size,
                         ),
                         Transform::from_translation(Vec3::new(0.0, 0.0, -0.1)),
                     ));
@@ -131,7 +133,7 @@ pub fn spawn_grid(
                                 index: space_index,
                             }),
                             color: Color::WHITE,
-                            custom_size: Some(Vec2::new(layout.cell_width, layout.cell_height)),
+                            custom_size: Some(sprite_size),
                             ..default()
                         },
                         Transform::from_translation(Vec3::ZERO),

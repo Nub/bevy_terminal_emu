@@ -41,13 +41,17 @@ fn ascii_chars() -> Vec<char> {
 }
 
 /// Compute the cell (width, height) in pixels for a given font and size.
+/// Compute the cell (width, height) in pixels for a given font and size.
+///
+/// Uses exact font metrics (no rounding) so adjacent cells tile seamlessly.
+/// Height excludes line_gap so vertical borders connect without gaps.
 pub fn compute_cell_size(font_bytes: &[u8], font_size: f32) -> (f32, f32) {
     let font = FontRef::try_from_slice(font_bytes).expect("Failed to parse font");
     let scale = ab_glyph::PxScale::from(font_size);
     let scaled_font = font.as_scaled(scale);
     let glyph_id = font.glyph_id('M');
-    let cell_width = scaled_font.h_advance(glyph_id).ceil();
-    let cell_height = scaled_font.height().ceil();
+    let cell_width = scaled_font.h_advance(glyph_id);
+    let cell_height = scaled_font.ascent() - scaled_font.descent();
     (cell_width, cell_height)
 }
 
@@ -59,7 +63,7 @@ fn build_atlas_data_for_chars(font_bytes: &[u8], font_size: f32, chars: &[char])
 
     let glyph_id = font.glyph_id('M');
     let cell_w = scaled_font.h_advance(glyph_id).ceil() as u32;
-    let cell_h = scaled_font.height().ceil() as u32;
+    let cell_h = (scaled_font.ascent() - scaled_font.descent()).ceil() as u32;
     let cell_size = UVec2::new(cell_w, cell_h);
 
     let glyph_count = chars.len();
@@ -173,6 +177,7 @@ pub fn generate_font_atlas(
 /// current frame's sync pass.
 pub fn expand_font_atlas(
     mut atlas: ResMut<FontAtlasResource>,
+    terminal_res: Res<crate::TerminalResource>,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     cell_index: Res<CellEntityIndex>,
@@ -232,6 +237,9 @@ pub fn expand_font_atlas(
             }
         }
     }
+
+    // Mark all cells dirty so sync re-processes glyph indices with the expanded atlas
+    terminal_res.0.lock().unwrap().backend_mut().mark_all_dirty();
 }
 
 /// Detects when `TerminalConfig.font_size` has changed and rebuilds the atlas,
@@ -270,6 +278,7 @@ pub fn rebuild_font_atlas(
     atlas.glyph_count = data.glyph_count;
 
     // Update all cell positions and child sprites
+    let sprite_size = layout.sprite_size();
     for (grid_pos, mut base_tf, mut transform) in cell_query.iter_mut() {
         let world_x =
             layout.origin.x + (grid_pos.col as f32) * layout.cell_width + layout.cell_width / 2.0;
@@ -284,12 +293,10 @@ pub fn rebuild_font_atlas(
             if let Ok(children) = children_query.get(entity) {
                 for child in children.iter() {
                     if let Ok(mut bg_sprite) = bg_query.get_mut(child) {
-                        bg_sprite.custom_size =
-                            Some(Vec2::new(layout.cell_width, layout.cell_height));
+                        bg_sprite.custom_size = Some(sprite_size);
                     }
                     if let Ok(mut fg_sprite) = fg_query.get_mut(child) {
-                        fg_sprite.custom_size =
-                            Some(Vec2::new(layout.cell_width, layout.cell_height));
+                        fg_sprite.custom_size = Some(sprite_size);
                         fg_sprite.image = image_handle.clone();
                         if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
                             tex_atlas.layout = layout_handle.clone();

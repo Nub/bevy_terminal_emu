@@ -63,6 +63,11 @@ impl BevyBackend {
     pub fn clear_dirty(&mut self) {
         self.dirty_cells.fill(false);
     }
+
+    /// Mark all cells as dirty (e.g. after atlas expansion requires full re-sync).
+    pub fn mark_all_dirty(&mut self) {
+        self.dirty_cells.fill(true);
+    }
 }
 
 impl Backend for BevyBackend {

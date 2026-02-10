@@ -116,6 +116,11 @@ pub struct TerminalLayout {
 }
 
 impl TerminalLayout {
+    /// Sprite size with a small overlap to eliminate sub-pixel gaps between cells.
+    pub fn sprite_size(&self) -> Vec2 {
+        Vec2::new(self.cell_width + 0.5, self.cell_height + 0.5)
+    }
+
     /// Compute layout from config using font metrics.
     pub fn from_config(config: &TerminalConfig) -> Self {
         let (cell_width, cell_height) = atlas::compute_cell_size(config.font.bytes(), config.font_size);
