@@ -15,9 +15,6 @@ fn main() {
             config: TerminalConfig {
                 columns: 160,
                 rows: 48,
-                cell_width: 10.0,
-                cell_height: 20.0,
-                origin: Vec2::new(-800.0, 480.0),
                 ..Default::default()
             },
         })

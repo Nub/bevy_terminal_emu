@@ -40,6 +40,17 @@ fn ascii_chars() -> Vec<char> {
     (0x20u8..=0x7E).map(|b| b as char).collect()
 }
 
+/// Compute the cell (width, height) in pixels for a given font and size.
+pub fn compute_cell_size(font_bytes: &[u8], font_size: f32) -> (f32, f32) {
+    let font = FontRef::try_from_slice(font_bytes).expect("Failed to parse font");
+    let scale = ab_glyph::PxScale::from(font_size);
+    let scaled_font = font.as_scaled(scale);
+    let glyph_id = font.glyph_id('M');
+    let cell_width = scaled_font.h_advance(glyph_id).ceil();
+    let cell_height = scaled_font.height().ceil();
+    (cell_width, cell_height)
+}
+
 /// Build the font atlas texture and layout for a given font size, font bytes, and character set.
 fn build_atlas_data_for_chars(font_bytes: &[u8], font_size: f32, chars: &[char]) -> AtlasData {
     let font = FontRef::try_from_slice(font_bytes).expect("Failed to parse font");
@@ -226,7 +237,8 @@ pub fn expand_font_atlas(
 /// Detects when `TerminalConfig.font_size` has changed and rebuilds the atlas,
 /// cell positions, and sprite sizes to match.
 pub fn rebuild_font_atlas(
-    mut config: ResMut<crate::TerminalConfig>,
+    config: Res<crate::TerminalConfig>,
+    mut layout: ResMut<crate::TerminalLayout>,
     mut atlas: ResMut<FontAtlasResource>,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
@@ -240,14 +252,8 @@ pub fn rebuild_font_atlas(
         return;
     }
 
-    // Scale cell dimensions proportionally
-    let ratio = config.font_size / atlas.font_size;
-    config.cell_width *= ratio;
-    config.cell_height *= ratio;
-    config.origin = Vec2::new(
-        -(config.columns as f32 * config.cell_width) / 2.0,
-        (config.rows as f32 * config.cell_height) / 2.0,
-    );
+    // Recompute layout from font metrics
+    *layout = crate::TerminalLayout::from_config(&config);
 
     // Rebuild the atlas at the new font size with all currently known chars
     let mut all_chars: Vec<char> = atlas.glyph_map.keys().copied().collect();
@@ -266,10 +272,10 @@ pub fn rebuild_font_atlas(
     // Update all cell positions and child sprites
     for (grid_pos, mut base_tf, mut transform) in cell_query.iter_mut() {
         let world_x =
-            config.origin.x + (grid_pos.col as f32) * config.cell_width + config.cell_width / 2.0;
-        let world_y = config.origin.y
-            - (grid_pos.row as f32) * config.cell_height
-            - config.cell_height / 2.0;
+            layout.origin.x + (grid_pos.col as f32) * layout.cell_width + layout.cell_width / 2.0;
+        let world_y = layout.origin.y
+            - (grid_pos.row as f32) * layout.cell_height
+            - layout.cell_height / 2.0;
         let translation = Vec3::new(world_x, world_y, 0.0);
         base_tf.translation = translation;
         transform.translation = translation;
@@ -279,11 +285,11 @@ pub fn rebuild_font_atlas(
                 for child in children.iter() {
                     if let Ok(mut bg_sprite) = bg_query.get_mut(child) {
                         bg_sprite.custom_size =
-                            Some(Vec2::new(config.cell_width, config.cell_height));
+                            Some(Vec2::new(layout.cell_width, layout.cell_height));
                     }
                     if let Ok(mut fg_sprite) = fg_query.get_mut(child) {
                         fg_sprite.custom_size =
-                            Some(Vec2::new(config.cell_width, config.cell_height));
+                            Some(Vec2::new(layout.cell_width, layout.cell_height));
                         fg_sprite.image = image_handle.clone();
                         if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
                             tex_atlas.layout = layout_handle.clone();

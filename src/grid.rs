@@ -2,7 +2,7 @@ use bevy::color::Color;
 use bevy::prelude::*;
 
 use crate::atlas::FontAtlasResource;
-use crate::TerminalConfig;
+use crate::{TerminalConfig, TerminalLayout};
 
 /// Marker component for terminal cell entities.
 #[derive(Component)]
@@ -80,6 +80,7 @@ impl CellEntityIndex {
 pub fn spawn_grid(
     mut commands: Commands,
     config: Res<TerminalConfig>,
+    layout: Res<TerminalLayout>,
     atlas: Res<FontAtlasResource>,
 ) {
     let total = config.columns as usize * config.rows as usize;
@@ -91,9 +92,9 @@ pub fn spawn_grid(
     for row in 0..config.rows {
         for col in 0..config.columns {
             let world_x =
-                config.origin.x + (col as f32) * config.cell_width + config.cell_width / 2.0;
+                layout.origin.x + (col as f32) * layout.cell_width + layout.cell_width / 2.0;
             let world_y =
-                config.origin.y - (row as f32) * config.cell_height - config.cell_height / 2.0;
+                layout.origin.y - (row as f32) * layout.cell_height - layout.cell_height / 2.0;
             let translation = Vec3::new(world_x, world_y, 0.0);
 
             let cell_entity = commands
@@ -115,7 +116,7 @@ pub fn spawn_grid(
                         BackgroundSprite,
                         Sprite::from_color(
                             Color::srgb(0.0, 0.0, 0.0),
-                            Vec2::new(config.cell_width, config.cell_height),
+                            Vec2::new(layout.cell_width, layout.cell_height),
                         ),
                         Transform::from_translation(Vec3::new(0.0, 0.0, -0.1)),
                     ));
@@ -130,7 +131,7 @@ pub fn spawn_grid(
                                 index: space_index,
                             }),
                             color: Color::WHITE,
-                            custom_size: Some(Vec2::new(config.cell_width, config.cell_height)),
+                            custom_size: Some(Vec2::new(layout.cell_width, layout.cell_height)),
                             ..default()
                         },
                         Transform::from_translation(Vec3::ZERO),

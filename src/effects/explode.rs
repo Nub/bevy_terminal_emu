@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use super::{simple_hash, EffectRegion};
 use crate::grid::{GridPosition, TerminalCell};
-use crate::TerminalConfig;
+use crate::TerminalLayout;
 
 /// Chaotic explosion effect — cells fly outward with randomized velocity,
 /// spin, and timing. Differentiates from Scatter (smooth/uniform) by giving
@@ -42,7 +42,7 @@ impl Default for Explode {
 /// System that applies the explode effect to cell transforms.
 pub fn explode_system(
     time: Res<Time>,
-    config: Res<TerminalConfig>,
+    layout: Res<TerminalLayout>,
     mut effects: Query<(&mut Explode, &EffectRegion)>,
     mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
 ) {
@@ -81,8 +81,8 @@ pub fn explode_system(
             let r4 = (h4 % 10000) as f32 / 10000.0;
 
             // Direction from origin to this cell (in pixel space)
-            let dx = (pos.col as f32 - explode.origin_col) * config.cell_width;
-            let dy = (pos.row as f32 - explode.origin_row) * -config.cell_height;
+            let dx = (pos.col as f32 - explode.origin_col) * layout.cell_width;
+            let dy = (pos.row as f32 - explode.origin_row) * -layout.cell_height;
             let dist = (dx * dx + dy * dy).sqrt().max(0.001);
 
             // Normalized direction

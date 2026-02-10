@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use super::EffectRegion;
 use crate::grid::{GridPosition, TerminalCell};
-use crate::TerminalConfig;
+use crate::{TerminalConfig, TerminalLayout};
 
 /// Diagonal swipe effect — a line sweeps across the screen and cells near it
 /// get displaced perpendicular to the slash direction.
@@ -42,6 +42,7 @@ impl Default for Slash {
 pub fn slash_system(
     time: Res<Time>,
     config: Res<TerminalConfig>,
+    layout: Res<TerminalLayout>,
     mut effects: Query<(&mut Slash, &EffectRegion)>,
     mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
 ) {
@@ -110,8 +111,8 @@ pub fn slash_system(
 
                 // Displace perpendicular to the slash line
                 let disp = slash.amplitude * strength;
-                transform.translation.x += perp_x * disp * config.cell_width;
-                transform.translation.y += perp_y * disp * -config.cell_height;
+                transform.translation.x += perp_x * disp * layout.cell_width;
+                transform.translation.y += perp_y * disp * -layout.cell_height;
 
                 // Slight rotation for dramatic effect
                 let rotation = 0.15 * strength;

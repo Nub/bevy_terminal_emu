@@ -67,7 +67,10 @@ pub mod prelude {
         GridPosition, TerminalCell,
     };
     pub use crate::input::TerminalInputQueue;
-    pub use crate::{FontSource, TerminalConfig, TerminalEmuPlugin, TerminalResource, TerminalSet};
+    pub use crate::{
+        FontSource, TerminalConfig, TerminalEmuPlugin, TerminalLayout, TerminalResource,
+        TerminalSet,
+    };
 }
 
 /// Configuration for the terminal grid.
@@ -77,12 +80,6 @@ pub struct TerminalConfig {
     pub columns: u16,
     /// Number of rows in the terminal.
     pub rows: u16,
-    /// Width of each cell in pixels.
-    pub cell_width: f32,
-    /// Height of each cell in pixels.
-    pub cell_height: f32,
-    /// World-space origin (top-left corner of the grid).
-    pub origin: Vec2,
     /// Font size for glyph rasterization.
     pub font_size: f32,
     /// Font to use for glyph rasterization.
@@ -98,13 +95,37 @@ impl Default for TerminalConfig {
         Self {
             columns: 80,
             rows: 24,
-            cell_width: 8.0,
-            cell_height: 16.0,
-            origin: Vec2::new(-320.0, 192.0),
-            font_size: 16.0,
+            font_size: 20.0,
             font: FontSource::Default,
             default_fg: Color::srgb(0.9, 0.9, 0.9),
             default_bg: Color::srgb(0.1, 0.1, 0.1),
+        }
+    }
+}
+
+/// Derived layout properties computed from font metrics and terminal dimensions.
+/// Created automatically by the plugin — do not construct manually.
+#[derive(Resource, Clone, Debug)]
+pub struct TerminalLayout {
+    /// Width of each cell in pixels (derived from font advance width).
+    pub cell_width: f32,
+    /// Height of each cell in pixels (derived from font line height).
+    pub cell_height: f32,
+    /// World-space origin (top-left corner of the grid), centered on screen.
+    pub origin: Vec2,
+}
+
+impl TerminalLayout {
+    /// Compute layout from config using font metrics.
+    pub fn from_config(config: &TerminalConfig) -> Self {
+        let (cell_width, cell_height) = atlas::compute_cell_size(config.font.bytes(), config.font_size);
+        Self {
+            cell_width,
+            cell_height,
+            origin: Vec2::new(
+                -(config.columns as f32 * cell_width) / 2.0,
+                (config.rows as f32 * cell_height) / 2.0,
+            ),
         }
     }
 }
@@ -146,11 +167,13 @@ impl Default for TerminalEmuPlugin {
 impl Plugin for TerminalEmuPlugin {
     fn build(&self, app: &mut App) {
         let config = self.config.clone();
+        let layout = TerminalLayout::from_config(&config);
         let backend = BevyBackend::new(config.columns, config.rows);
         let terminal = ratatui::Terminal::new(backend).expect("Failed to create ratatui terminal");
         let terminal_resource = TerminalResource(Arc::new(Mutex::new(terminal)));
 
         app.insert_resource(config)
+            .insert_resource(layout)
             .insert_resource(terminal_resource)
             .insert_resource(TerminalInputQueue::default())
             .insert_resource(SyncGeneration::default())

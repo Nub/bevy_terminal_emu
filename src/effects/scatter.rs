@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use super::EffectRegion;
 use crate::grid::{GridPosition, TerminalCell};
-use crate::TerminalConfig;
+use crate::TerminalLayout;
 
 /// Explosion effect that scatters cells outward from a center point.
 ///
@@ -42,7 +42,7 @@ impl Default for Scatter {
 /// System that applies the scatter effect to cell transforms.
 pub fn scatter_system(
     time: Res<Time>,
-    config: Res<TerminalConfig>,
+    layout: Res<TerminalLayout>,
     mut effects: Query<(&mut Scatter, &EffectRegion)>,
     mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
 ) {
@@ -67,8 +67,8 @@ pub fn scatter_system(
             }
 
             // Direction from origin to this cell (in pixel space)
-            let dx = (pos.col as f32 - scatter.origin_col) * config.cell_width;
-            let dy = (pos.row as f32 - scatter.origin_row) * -config.cell_height;
+            let dx = (pos.col as f32 - scatter.origin_col) * layout.cell_width;
+            let dy = (pos.row as f32 - scatter.origin_row) * -layout.cell_height;
             let dist = (dx * dx + dy * dy).sqrt().max(0.001);
 
             // Normalized direction
