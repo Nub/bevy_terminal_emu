@@ -94,13 +94,20 @@ impl EffectRegion {
 
 /// System that resets all cell transforms to their base positions each frame.
 /// This runs before effects so they can additively modify transforms.
+/// Uses compare-before-write to avoid triggering Bevy change detection when
+/// transforms are already at base (i.e. no effects modified them last frame).
 pub fn reset_transforms(
     mut query: Query<(&BaseTransform, &mut Transform), With<TerminalCell>>,
 ) {
     for (base, mut transform) in query.iter_mut() {
-        transform.translation = base.translation;
-        transform.rotation = base.rotation;
-        transform.scale = base.scale;
+        if transform.translation != base.translation
+            || transform.rotation != base.rotation
+            || transform.scale != base.scale
+        {
+            transform.translation = base.translation;
+            transform.rotation = base.rotation;
+            transform.scale = base.scale;
+        }
     }
 }
 

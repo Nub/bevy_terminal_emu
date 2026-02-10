@@ -16,6 +16,8 @@ pub struct BevyBackend {
     cursor: Position,
     cursor_visible: bool,
     flush_generation: u64,
+    /// Per-cell dirty flags set by draw()/clear() and consumed by sync.
+    dirty_cells: Vec<bool>,
 }
 
 impl BevyBackend {
@@ -29,6 +31,7 @@ impl BevyBackend {
             cursor: Position { x: 0, y: 0 },
             cursor_visible: false,
             flush_generation: 0,
+            dirty_cells: vec![true; size], // all dirty initially so first sync populates everything
         }
     }
 
@@ -50,6 +53,16 @@ impl BevyBackend {
             None
         }
     }
+
+    /// Returns per-cell dirty flags (true = modified since last `clear_dirty()`).
+    pub fn dirty_cells(&self) -> &[bool] {
+        &self.dirty_cells
+    }
+
+    /// Clear all dirty flags after sync has consumed them.
+    pub fn clear_dirty(&mut self) {
+        self.dirty_cells.fill(false);
+    }
 }
 
 impl Backend for BevyBackend {
@@ -63,6 +76,7 @@ impl Backend for BevyBackend {
             if x < self.width && y < self.height {
                 let idx = y as usize * self.width as usize + x as usize;
                 self.buffer[idx] = cell.clone();
+                self.dirty_cells[idx] = true;
             }
         }
         Ok(())
@@ -88,8 +102,9 @@ impl Backend for BevyBackend {
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
-        for cell in &mut self.buffer {
+        for (i, cell) in self.buffer.iter_mut().enumerate() {
             cell.reset();
+            self.dirty_cells[i] = true;
         }
         Ok(())
     }
@@ -99,16 +114,18 @@ impl Backend for BevyBackend {
             ClearType::All => self.clear(),
             ClearType::AfterCursor => {
                 let start = self.cursor.y as usize * self.width as usize + self.cursor.x as usize;
-                for cell in self.buffer[start..].iter_mut() {
+                for (cell, dirty) in self.buffer[start..].iter_mut().zip(self.dirty_cells[start..].iter_mut()) {
                     cell.reset();
+                    *dirty = true;
                 }
                 Ok(())
             }
             ClearType::BeforeCursor => {
                 let end = self.cursor.y as usize * self.width as usize + self.cursor.x as usize;
                 let end = end.min(self.buffer.len());
-                for cell in self.buffer[..end].iter_mut() {
+                for (cell, dirty) in self.buffer[..end].iter_mut().zip(self.dirty_cells[..end].iter_mut()) {
                     cell.reset();
+                    *dirty = true;
                 }
                 Ok(())
             }
@@ -116,8 +133,9 @@ impl Backend for BevyBackend {
                 let start = self.cursor.y as usize * self.width as usize;
                 let end = start + self.width as usize;
                 let end = end.min(self.buffer.len());
-                for cell in self.buffer[start..end].iter_mut() {
+                for (cell, dirty) in self.buffer[start..end].iter_mut().zip(self.dirty_cells[start..end].iter_mut()) {
                     cell.reset();
+                    *dirty = true;
                 }
                 Ok(())
             }
@@ -126,8 +144,9 @@ impl Backend for BevyBackend {
                 let end = (self.cursor.y as usize + 1) * self.width as usize;
                 let end = end.min(self.buffer.len());
                 if start < self.buffer.len() {
-                    for cell in self.buffer[start..end].iter_mut() {
+                    for (cell, dirty) in self.buffer[start..end].iter_mut().zip(self.dirty_cells[start..end].iter_mut()) {
                         cell.reset();
+                        *dirty = true;
                     }
                 }
                 Ok(())
