@@ -15,17 +15,50 @@ use backend::BevyBackend;
 use input::TerminalInputQueue;
 use sync::SyncGeneration;
 
+/// The embedded default font (JetBrains Mono Regular).
+const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../assets/JetBrainsMono-Regular.ttf");
+
+/// Source of font data for the terminal.
+#[derive(Clone, Debug)]
+pub enum FontSource {
+    /// Use the embedded JetBrains Mono font (default).
+    Default,
+    /// Use custom font bytes loaded from a file or other source.
+    Custom(Vec<u8>),
+}
+
+impl FontSource {
+    /// Load a font from a file path.
+    pub fn from_file(path: impl AsRef<std::path::Path>) -> Self {
+        let bytes = std::fs::read(path.as_ref())
+            .unwrap_or_else(|e| panic!("Failed to read font file {:?}: {}", path.as_ref(), e));
+        FontSource::Custom(bytes)
+    }
+
+    /// Get the font bytes.
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            FontSource::Default => DEFAULT_FONT_BYTES,
+            FontSource::Custom(bytes) => bytes,
+        }
+    }
+}
+
 pub mod prelude {
     pub use crate::atlas::FontAtlasResource;
     pub use crate::backend::BevyBackend;
     pub use crate::effects::breathe::Breathe;
+    pub use crate::effects::bubbly::Bubbly;
     pub use crate::effects::collapse::Collapse;
     pub use crate::effects::explode::Explode;
     pub use crate::effects::glitch::Glitch;
+    pub use crate::effects::glow::Glow;
     pub use crate::effects::gravity::{CellVelocity, Gravity};
     pub use crate::effects::jitter::Jitter;
+    pub use crate::effects::rainbow::Rainbow;
     pub use crate::effects::ripple::Ripple;
     pub use crate::effects::scatter::Scatter;
+    pub use crate::effects::shiny::Shiny;
     pub use crate::effects::slash::Slash;
     pub use crate::effects::wave::Wave;
     pub use crate::effects::{EffectRegion, GridRect};
@@ -34,7 +67,7 @@ pub mod prelude {
         GridPosition, TerminalCell,
     };
     pub use crate::input::TerminalInputQueue;
-    pub use crate::{TerminalConfig, TerminalEmuPlugin, TerminalResource, TerminalSet};
+    pub use crate::{FontSource, TerminalConfig, TerminalEmuPlugin, TerminalResource, TerminalSet};
 }
 
 /// Configuration for the terminal grid.
@@ -52,6 +85,8 @@ pub struct TerminalConfig {
     pub origin: Vec2,
     /// Font size for glyph rasterization.
     pub font_size: f32,
+    /// Font to use for glyph rasterization.
+    pub font: FontSource,
     /// Default foreground color.
     pub default_fg: Color,
     /// Default background color.
@@ -67,6 +102,7 @@ impl Default for TerminalConfig {
             cell_height: 20.0,
             origin: Vec2::new(-400.0, 240.0),
             font_size: 20.0,
+            font: FontSource::Default,
             default_fg: Color::srgb(0.9, 0.9, 0.9),
             default_bg: Color::srgb(0.1, 0.1, 0.1),
         }
@@ -141,7 +177,11 @@ impl Plugin for TerminalEmuPlugin {
             )
             .add_systems(
                 Update,
-                (atlas::rebuild_font_atlas, sync::sync_buffer_to_entities)
+                (
+                    atlas::expand_font_atlas,
+                    atlas::rebuild_font_atlas,
+                    sync::sync_buffer_to_entities,
+                )
                     .chain()
                     .in_set(TerminalSet::Sync),
             )
@@ -153,13 +193,17 @@ impl Plugin for TerminalEmuPlugin {
                 Update,
                 (
                     effects::breathe::breathe_system,
+                    effects::bubbly::bubbly_system,
                     effects::collapse::collapse_system,
                     effects::explode::explode_system,
                     effects::glitch::glitch_system,
+                    effects::glow::glow_system,
                     effects::gravity::gravity_system,
                     effects::jitter::jitter_system,
+                    effects::rainbow::rainbow_system,
                     effects::ripple::ripple_system,
                     effects::scatter::scatter_system,
+                    effects::shiny::shiny_system,
                     effects::slash::slash_system,
                     effects::wave::wave_system,
                 )

@@ -10,7 +10,17 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        .add_plugins(TerminalEmuPlugin::default())
+        .insert_resource(ClearColor(bevy::color::Color::BLACK))
+        .add_plugins(TerminalEmuPlugin {
+            config: TerminalConfig {
+                columns: 160,
+                rows: 48,
+                cell_width: 10.0,
+                cell_height: 20.0,
+                origin: Vec2::new(-800.0, 480.0),
+                ..Default::default()
+            },
+        })
         .insert_resource(BrowserState::new())
         .insert_resource(ActiveEffectEntities::default())
         .add_systems(Startup, setup_camera)
@@ -70,23 +80,23 @@ impl RegionPreset {
         match self {
             RegionPreset::Full => EffectRegion::all(),
             RegionPreset::LeftHalf => EffectRegion {
-                include: vec![GridRect { col: 0, row: 0, width: 40, height: 24 }],
+                include: vec![GridRect { col: 0, row: 0, width: 80, height: 48 }],
                 exclude: vec![],
             },
             RegionPreset::RightHalf => EffectRegion {
-                include: vec![GridRect { col: 40, row: 0, width: 40, height: 24 }],
+                include: vec![GridRect { col: 80, row: 0, width: 80, height: 48 }],
                 exclude: vec![],
             },
             RegionPreset::TopHalf => EffectRegion {
-                include: vec![GridRect { col: 0, row: 0, width: 80, height: 12 }],
+                include: vec![GridRect { col: 0, row: 0, width: 160, height: 24 }],
                 exclude: vec![],
             },
             RegionPreset::BottomHalf => EffectRegion {
-                include: vec![GridRect { col: 0, row: 12, width: 80, height: 12 }],
+                include: vec![GridRect { col: 0, row: 24, width: 160, height: 24 }],
                 exclude: vec![],
             },
             RegionPreset::Center => EffectRegion {
-                include: vec![GridRect { col: 20, row: 6, width: 40, height: 12 }],
+                include: vec![GridRect { col: 40, row: 12, width: 80, height: 24 }],
                 exclude: vec![],
             },
         }
@@ -155,6 +165,26 @@ impl BrowserState {
                 EffectEntry {
                     name: "Explode",
                     description: "Chaotic explosion with random spin",
+                    active: false,
+                },
+                EffectEntry {
+                    name: "Rainbow",
+                    description: "Foreground hue cycling through spectrum",
+                    active: false,
+                },
+                EffectEntry {
+                    name: "Glow",
+                    description: "Pulsing alpha and scale shimmer",
+                    active: false,
+                },
+                EffectEntry {
+                    name: "Shiny",
+                    description: "Sweeping diagonal highlight band",
+                    active: false,
+                },
+                EffectEntry {
+                    name: "Bubbly",
+                    description: "Random cells grow and shrink",
                     active: false,
                 },
             ],
@@ -267,6 +297,10 @@ fn sync_effects(
                 7 => commands.spawn((Jitter::default(), region.clone())).id(),
                 8 => commands.spawn((Slash::default(), region.clone())).id(),
                 9 => commands.spawn((Explode::default(), region.clone())).id(),
+                10 => commands.spawn((Rainbow::default(), region.clone())).id(),
+                11 => commands.spawn((Glow::default(), region.clone())).id(),
+                12 => commands.spawn((Shiny::default(), region.clone())).id(),
+                13 => commands.spawn((Bubbly::default(), region.clone())).id(),
                 _ => unreachable!(),
             };
             active.map.insert(idx, entity);
@@ -398,6 +432,45 @@ fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>, config
                 Line::from("0123456789 !@#$%^&*()"),
                 Line::from(""),
                 Line::from(vec![Span::styled(
+                    "--- Box Drawing ---",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                Line::from("┌──────┬──────┐  ╔══════╗"),
+                Line::from("│ thin │ box  │  ║double║"),
+                Line::from("├──────┼──────┤  ╠══════╣"),
+                Line::from("│ line │ draw │  ║ line ║"),
+                Line::from("└──────┴──────┘  ╚══════╝"),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    "--- Block Elements ---",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                Line::from(vec![
+                    Span::styled("░░", Style::default().fg(Color::Red)),
+                    Span::styled("▒▒", Style::default().fg(Color::Yellow)),
+                    Span::styled("▓▓", Style::default().fg(Color::Green)),
+                    Span::styled("██", Style::default().fg(Color::Cyan)),
+                    Span::raw(" "),
+                    Span::styled("▀▄▀▄", Style::default().fg(Color::Magenta)),
+                    Span::raw(" "),
+                    Span::styled("▌▐▌▐", Style::default().fg(Color::Blue)),
+                ]),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    "--- Symbols & Arrows ---",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                Line::from("← → ↑ ↓ ↔ ↕ ◀ ▶ ▲ ▼"),
+                Line::from("● ○ ■ □ ▪ ▫ ◆ ◇ ★ ☆"),
+                Line::from("✓ ✗ ⚡ ♠ ♣ ♥ ♦ … · •"),
+                Line::from(""),
+                Line::from(vec![Span::styled(
                     "--- Color Swatch ---",
                     Style::default()
                         .fg(Color::Cyan)
@@ -451,21 +524,18 @@ fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>, config
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
                 )]),
-                Line::from(""),
                 Line::from(format!("  Font size: {:.0}", config.font_size)),
-                Line::from(""),
-                Line::from("  Up/Down       Navigate"),
-                Line::from("  Enter/Space   Toggle"),
-                Line::from("  Ctrl+/-       Font size"),
-                Line::from("  e             Cycle region"),
-                Line::from("  r             Reset all"),
-                Line::from("  Ctrl+C        Quit"),
+                Line::from("  Up/Down  Navigate   Ctrl+/-  Font"),
+                Line::from("  Enter    Toggle     e  Region"),
+                Line::from("  r  Reset all        Ctrl+C  Quit"),
             ];
 
             let demo_block = Block::default()
                 .title(" Preview ")
                 .borders(Borders::ALL);
-            let demo = Paragraph::new(demo_lines).block(demo_block);
+            let demo = Paragraph::new(demo_lines)
+                .block(demo_block)
+                .centered();
             frame.render_widget(demo, chunks[1]);
         })
         .unwrap();

@@ -14,7 +14,7 @@ pub struct SyncGeneration(pub u64);
 pub fn sync_buffer_to_entities(
     terminal_res: Res<TerminalResource>,
     config: Res<TerminalConfig>,
-    atlas: Res<FontAtlasResource>,
+    mut atlas: ResMut<FontAtlasResource>,
     cell_index: Res<CellEntityIndex>,
     mut sync_gen: ResMut<SyncGeneration>,
     mut cell_query: Query<(&GridPosition, &mut CellStyle)>,
@@ -34,6 +34,8 @@ pub fn sync_buffer_to_entities(
 
     let buffer = backend.buffer();
     let columns = config.columns as usize;
+    let space_index = atlas.glyph_map.get(&' ').copied().unwrap_or(0);
+    let mut new_glyphs: Vec<char> = Vec::new();
 
     for (grid_pos, mut cell_style) in cell_query.iter_mut() {
         let idx = grid_pos.row as usize * columns + grid_pos.col as usize;
@@ -74,11 +76,17 @@ pub fn sync_buffer_to_entities(
                             fg
                         };
 
-                        // Look up glyph in atlas
+                        // Look up glyph in atlas; queue unknown chars for next-frame expansion
                         let ch = symbol.chars().next().unwrap_or(' ');
-                        let glyph_index = atlas.glyph_map.get(&ch).copied().unwrap_or(
-                            atlas.glyph_map.get(&' ').copied().unwrap_or(0),
-                        );
+                        let glyph_index = match atlas.glyph_map.get(&ch) {
+                            Some(&idx) => idx,
+                            None => {
+                                if ch != ' ' {
+                                    new_glyphs.push(ch);
+                                }
+                                space_index
+                            }
+                        };
 
                         if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
                             tex_atlas.index = glyph_index;
@@ -87,5 +95,10 @@ pub fn sync_buffer_to_entities(
                 }
             }
         }
+    }
+
+    // Schedule newly discovered glyphs for atlas expansion next frame
+    if !new_glyphs.is_empty() {
+        atlas.pending_glyphs.extend(new_glyphs);
     }
 }

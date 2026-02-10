@@ -3,6 +3,8 @@ use bevy_terminal_emu::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 fn main() {
+    // Example: use an alternative font by uncommenting the line below
+    // let font = FontSource::from_file("assets/FiraCodeNerdFont-Regular.ttf");
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(TerminalEmuPlugin::default())

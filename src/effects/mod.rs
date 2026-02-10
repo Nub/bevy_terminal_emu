@@ -1,11 +1,15 @@
 pub mod breathe;
+pub mod bubbly;
 pub mod collapse;
 pub mod explode;
 pub mod glitch;
+pub mod glow;
 pub mod gravity;
 pub mod jitter;
+pub mod rainbow;
 pub mod ripple;
 pub mod scatter;
+pub mod shiny;
 pub mod slash;
 pub mod wave;
 

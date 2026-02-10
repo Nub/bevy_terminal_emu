@@ -21,10 +21,10 @@ pub struct Breathe {
 impl Default for Breathe {
     fn default() -> Self {
         Self {
-            min_scale: 0.8,
-            max_scale: 1.2,
-            speed: 1.5,
-            phase_spread: 0.3,
+            min_scale: 0.92,
+            max_scale: 1.08,
+            speed: 1.0,
+            phase_spread: 0.0,
         }
     }
 }
