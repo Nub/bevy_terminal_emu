@@ -116,14 +116,21 @@ pub struct TerminalLayout {
 }
 
 impl TerminalLayout {
-    /// Sprite size with a small overlap to eliminate sub-pixel gaps between cells.
-    pub fn sprite_size(&self) -> Vec2 {
+    /// Background sprite size with a small overlap to fill sub-pixel gaps.
+    /// Foreground sprites should use exact cell dimensions to avoid clipping.
+    pub fn bg_sprite_size(&self) -> Vec2 {
         Vec2::new(self.cell_width + 0.5, self.cell_height + 0.5)
     }
 
     /// Compute layout from config using font metrics.
+    ///
+    /// Cell dimensions are ceil'd to integer pixels so that foreground sprites
+    /// can render at an exact 1:1 pixel ratio with the atlas tile — no scaling,
+    /// no nearest-filter pixel loss.
     pub fn from_config(config: &TerminalConfig) -> Self {
-        let (cell_width, cell_height) = atlas::compute_cell_size(config.font.bytes(), config.font_size);
+        let (cw, ch) = atlas::compute_cell_size(config.font.bytes(), config.font_size);
+        let cell_width = cw.ceil();
+        let cell_height = ch.ceil();
         Self {
             cell_width,
             cell_height,

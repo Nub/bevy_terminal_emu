@@ -278,7 +278,7 @@ pub fn rebuild_font_atlas(
     atlas.glyph_count = data.glyph_count;
 
     // Update all cell positions and child sprites
-    let sprite_size = layout.sprite_size();
+    let bg_size = layout.bg_sprite_size();
     for (grid_pos, mut base_tf, mut transform) in cell_query.iter_mut() {
         let world_x =
             layout.origin.x + (grid_pos.col as f32) * layout.cell_width + layout.cell_width / 2.0;
@@ -293,10 +293,11 @@ pub fn rebuild_font_atlas(
             if let Ok(children) = children_query.get(entity) {
                 for child in children.iter() {
                     if let Ok(mut bg_sprite) = bg_query.get_mut(child) {
-                        bg_sprite.custom_size = Some(sprite_size);
+                        bg_sprite.custom_size = Some(bg_size);
                     }
                     if let Ok(mut fg_sprite) = fg_query.get_mut(child) {
-                        fg_sprite.custom_size = Some(sprite_size);
+                        // No custom_size — atlas tile renders at natural pixel dimensions
+                        fg_sprite.custom_size = None;
                         fg_sprite.image = image_handle.clone();
                         if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
                             tex_atlas.layout = layout_handle.clone();

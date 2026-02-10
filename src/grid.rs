@@ -89,7 +89,7 @@ pub fn spawn_grid(
     // Space glyph index (fallback to 0)
     let space_index = atlas.glyph_map.get(&' ').copied().unwrap_or(0);
 
-    let sprite_size = layout.sprite_size();
+    let bg_size = layout.bg_sprite_size();
 
     for row in 0..config.rows {
         for col in 0..config.columns {
@@ -118,12 +118,14 @@ pub fn spawn_grid(
                         BackgroundSprite,
                         Sprite::from_color(
                             Color::srgb(0.0, 0.0, 0.0),
-                            sprite_size,
+                            bg_size,
                         ),
                         Transform::from_translation(Vec3::new(0.0, 0.0, -0.1)),
                     ));
 
                     // Foreground sprite (glyph from atlas) at z = 0
+                    // No custom_size — renders at atlas tile's natural pixel dimensions,
+                    // which matches ceil'd cell spacing for 1:1 pixel-perfect rendering.
                     parent.spawn((
                         ForegroundSprite,
                         Sprite {
@@ -133,7 +135,6 @@ pub fn spawn_grid(
                                 index: space_index,
                             }),
                             color: Color::WHITE,
-                            custom_size: Some(sprite_size),
                             ..default()
                         },
                         Transform::from_translation(Vec3::ZERO),
