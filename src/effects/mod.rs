@@ -15,7 +15,7 @@ pub mod wave;
 
 use bevy::prelude::*;
 
-use crate::grid::{BaseTransform, TerminalCell};
+use crate::grid::{BaseTransform, CellEntityIndex, CellStyle, ForegroundSprite, TerminalCell};
 
 /// A rectangle in grid coordinates.
 #[derive(Clone, Debug)]
@@ -107,6 +107,32 @@ pub fn reset_transforms(
             transform.translation = base.translation;
             transform.rotation = base.rotation;
             transform.scale = base.scale;
+        }
+    }
+}
+
+/// Resets foreground sprite colors to their CellStyle values each frame.
+/// Effects that modify sprite color (Glow, Rainbow, Shiny) run after this,
+/// so their changes last exactly one frame and don't accumulate.
+pub fn reset_colors(
+    cell_index: Res<CellEntityIndex>,
+    cell_query: Query<&CellStyle, With<TerminalCell>>,
+    mut fg_query: Query<&mut Sprite, With<ForegroundSprite>>,
+) {
+    for (idx, &parent_entity) in cell_index.entities.iter().enumerate() {
+        let Ok(cell_style) = cell_query.get(parent_entity) else {
+            continue;
+        };
+        let fg_entity = cell_index.fg_entities[idx];
+        if let Ok(mut fg_sprite) = fg_query.get_mut(fg_entity) {
+            let target = if cell_style.dim {
+                cell_style.fg.with_alpha(0.5)
+            } else {
+                cell_style.fg
+            };
+            if fg_sprite.color != target {
+                fg_sprite.color = target;
+            }
         }
     }
 }

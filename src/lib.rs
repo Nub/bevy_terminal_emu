@@ -222,7 +222,8 @@ impl Plugin for TerminalEmuPlugin {
             )
             .add_systems(
                 Update,
-                effects::reset_transforms.in_set(TerminalSet::ResetTransforms),
+                (effects::reset_transforms, effects::reset_colors)
+                    .in_set(TerminalSet::ResetTransforms),
             )
             .add_systems(
                 Update,

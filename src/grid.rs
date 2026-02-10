@@ -121,6 +121,7 @@ pub fn spawn_grid(
                             index: space_index,
                         }),
                         color: Color::WHITE,
+                        custom_size: Some(Vec2::new(layout.cell_width, layout.cell_height)),
                         ..default()
                     },
                     Transform::from_translation(Vec3::new(0.0, 0.0, 0.1)),

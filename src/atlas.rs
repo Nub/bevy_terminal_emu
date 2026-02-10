@@ -5,6 +5,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+use bevy::window::PrimaryWindow;
+
 use crate::grid::{BackgroundSprite, BaseTransform, CellEntityIndex, ForegroundSprite, GridPosition, TerminalCell};
 
 /// Holds the generated font atlas texture, layout, and glyph mapping.
@@ -15,6 +17,8 @@ pub struct FontAtlasResource {
     pub glyph_map: HashMap<char, usize>,
     pub cell_size: UVec2,
     pub font_size: f32,
+    /// The scale factor the atlas was rasterized at (for HiDPI).
+    pub scale_factor: f32,
     /// The font bytes used to build this atlas (kept for rebuilds).
     font_bytes: Vec<u8>,
     /// Characters discovered at runtime that aren't yet in the atlas.
@@ -152,10 +156,17 @@ pub fn generate_font_atlas(
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     config: Res<crate::TerminalConfig>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
+    let scale_factor = window_query
+        .single()
+        .map(|w| w.scale_factor())
+        .unwrap_or(1.0);
+
     let font_bytes = config.font.bytes().to_vec();
     let chars = ascii_chars();
-    let data = build_atlas_data_for_chars(&font_bytes, config.font_size, &chars);
+    let raster_size = config.font_size * scale_factor;
+    let data = build_atlas_data_for_chars(&font_bytes, raster_size, &chars);
     let image_handle = images.add(data.image);
     let layout_handle = layouts.add(data.layout);
 
@@ -165,6 +176,7 @@ pub fn generate_font_atlas(
         glyph_map: data.glyph_map,
         cell_size: data.cell_size,
         font_size: config.font_size,
+        scale_factor,
         font_bytes,
         pending_glyphs: HashSet::new(),
         glyph_count: data.glyph_count,
@@ -177,6 +189,7 @@ pub fn generate_font_atlas(
 pub fn expand_font_atlas(
     mut atlas: ResMut<FontAtlasResource>,
     terminal_res: Res<crate::TerminalResource>,
+    layout: Res<crate::TerminalLayout>,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     cell_index: Res<CellEntityIndex>,
@@ -213,7 +226,8 @@ pub fn expand_font_atlas(
     all_chars.sort();
     all_chars.dedup();
 
-    let data = build_atlas_data_for_chars(&atlas.font_bytes, atlas.font_size, &all_chars);
+    let raster_size = atlas.font_size * atlas.scale_factor;
+    let data = build_atlas_data_for_chars(&atlas.font_bytes, raster_size, &all_chars);
     let image_handle = images.add(data.image);
     let layout_handle = layouts.add(data.layout);
     atlas.image = image_handle.clone();
@@ -223,9 +237,11 @@ pub fn expand_font_atlas(
     atlas.glyph_count = data.glyph_count;
 
     // Update all foreground sprite handles to point to the new atlas
+    let fg_custom_size = Some(Vec2::new(layout.cell_width, layout.cell_height));
     for &fg_entity in &cell_index.fg_entities {
         if let Ok(mut fg_sprite) = fg_query.get_mut(fg_entity) {
             fg_sprite.image = image_handle.clone();
+            fg_sprite.custom_size = fg_custom_size;
             if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
                 tex_atlas.layout = layout_handle.clone();
             }
@@ -245,10 +261,16 @@ pub fn rebuild_font_atlas(
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     cell_index: Res<CellEntityIndex>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
     mut parent_query: Query<(&GridPosition, &mut BaseTransform, &mut Transform, &mut Sprite), With<TerminalCell>>,
     mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<TerminalCell>)>,
 ) {
-    if config.font_size == atlas.font_size {
+    let scale_factor = window_query
+        .single()
+        .map(|w| w.scale_factor())
+        .unwrap_or(1.0);
+
+    if config.font_size == atlas.font_size && scale_factor == atlas.scale_factor {
         return;
     }
 
@@ -259,7 +281,8 @@ pub fn rebuild_font_atlas(
     let mut all_chars: Vec<char> = atlas.glyph_map.keys().copied().collect();
     all_chars.sort();
 
-    let data = build_atlas_data_for_chars(&atlas.font_bytes, config.font_size, &all_chars);
+    let raster_size = config.font_size * scale_factor;
+    let data = build_atlas_data_for_chars(&atlas.font_bytes, raster_size, &all_chars);
     let image_handle = images.add(data.image);
     let layout_handle = layouts.add(data.layout);
     atlas.image = image_handle.clone();
@@ -267,6 +290,7 @@ pub fn rebuild_font_atlas(
     atlas.glyph_map = data.glyph_map;
     atlas.cell_size = data.cell_size;
     atlas.font_size = config.font_size;
+    atlas.scale_factor = scale_factor;
     atlas.glyph_count = data.glyph_count;
 
     // Update all cell positions and BG sprites on parent entities
@@ -283,11 +307,11 @@ pub fn rebuild_font_atlas(
         bg_sprite.custom_size = Some(bg_size);
     }
 
-    // Update all FG sprites via direct entity lookup
+    // Update all FG sprites — custom_size keeps them at logical cell dimensions
+    let fg_custom_size = Some(Vec2::new(layout.cell_width, layout.cell_height));
     for &fg_entity in &cell_index.fg_entities {
         if let Ok(mut fg_sprite) = fg_query.get_mut(fg_entity) {
-            // No custom_size — atlas tile renders at natural pixel dimensions
-            fg_sprite.custom_size = None;
+            fg_sprite.custom_size = fg_custom_size;
             fg_sprite.image = image_handle.clone();
             if let Some(ref mut tex_atlas) = fg_sprite.texture_atlas {
                 tex_atlas.layout = layout_handle.clone();
