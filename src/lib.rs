@@ -53,6 +53,7 @@ pub mod prelude {
     pub use crate::effects::explode::Explode;
     pub use crate::effects::glitch::Glitch;
     pub use crate::effects::glow::Glow;
+    pub use crate::effects::knock::Knock;
     pub use crate::effects::gravity::{CellVelocity, Gravity};
     pub use crate::effects::jitter::Jitter;
     pub use crate::effects::rainbow::Rainbow;
@@ -236,6 +237,7 @@ impl Plugin for TerminalEmuPlugin {
                     effects::glow::glow_system,
                     effects::gravity::gravity_system,
                     effects::jitter::jitter_system,
+                    effects::knock::knock_system,
                     effects::rainbow::rainbow_system,
                     effects::ripple::ripple_system,
                     effects::scatter::scatter_system,

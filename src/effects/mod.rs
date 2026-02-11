@@ -4,6 +4,7 @@ pub mod collapse;
 pub mod explode;
 pub mod glitch;
 pub mod glow;
+pub mod knock;
 pub mod gravity;
 pub mod jitter;
 pub mod rainbow;
