@@ -96,6 +96,10 @@ pub struct TerminalConfig<T: 'static + Send + Sync> {
     pub z_layer: f32,
     /// Whether this terminal receives keyboard input (default: true).
     pub receive_input: bool,
+    /// Override cell dimensions instead of deriving from font metrics.
+    /// When set, `TerminalLayout` uses these exact values (no ceil rounding).
+    /// The atlas is still rasterized at `font_size` — this only affects grid spacing.
+    pub cell_size_override: Option<Vec2>,
     #[doc(hidden)]
     pub _marker: PhantomData<T>,
 }
@@ -112,6 +116,7 @@ impl<T: 'static + Send + Sync> Default for TerminalConfig<T> {
             origin_override: None,
             z_layer: 0.0,
             receive_input: true,
+            cell_size_override: None,
             _marker: PhantomData,
         }
     }
@@ -144,9 +149,12 @@ impl<T: 'static + Send + Sync> TerminalLayout<T> {
     /// can render at an exact 1:1 pixel ratio with the atlas tile — no scaling,
     /// no nearest-filter pixel loss.
     pub fn from_config(config: &TerminalConfig<T>) -> Self {
-        let (cw, ch) = atlas::compute_cell_size(config.font.bytes(), config.font_size);
-        let cell_width = cw.ceil();
-        let cell_height = ch.ceil();
+        let (cell_width, cell_height) = if let Some(override_size) = config.cell_size_override {
+            (override_size.x, override_size.y)
+        } else {
+            let (cw, ch) = atlas::compute_cell_size(config.font.bytes(), config.font_size);
+            (cw.ceil(), ch.ceil())
+        };
         let origin = config.origin_override.unwrap_or_else(|| {
             Vec2::new(
                 -(config.columns as f32 * cell_width) / 2.0,
@@ -307,6 +315,7 @@ fn clone_config<T: 'static + Send + Sync>(c: &TerminalConfig<T>) -> TerminalConf
         origin_override: c.origin_override,
         z_layer: c.z_layer,
         receive_input: c.receive_input,
+        cell_size_override: c.cell_size_override,
         _marker: PhantomData,
     }
 }
