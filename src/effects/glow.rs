@@ -1,19 +1,12 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{CellEntityIndex, ForegroundSprite, GridPosition, TerminalCell};
 
-/// Pulsing glow effect.
-///
-/// Modulates foreground sprite alpha and scale with per-cell phase offsets
-/// for a shimmering appearance.
 #[derive(Component, Clone, Debug)]
 pub struct Glow {
-    /// Oscillation speed in Hz.
     pub speed: f32,
-    /// Intensity of the alpha modulation (0.0 to 1.0).
     pub intensity: f32,
-    /// Spatial spread of phase offsets between cells.
     pub spread: f32,
 }
 
@@ -27,13 +20,12 @@ impl Default for Glow {
     }
 }
 
-/// System that applies the glow effect to foreground sprites.
-pub fn glow_system(
+pub fn glow_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    effects: Query<(&Glow, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
-    cell_index: Res<CellEntityIndex>,
-    mut sprites: Query<&mut Sprite, With<ForegroundSprite>>,
+    effects: Query<(&Glow, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
+    cell_index: Res<CellEntityIndex<T>>,
+    mut sprites: Query<&mut Sprite, With<ForegroundSprite<T>>>,
 ) {
     let t = time.elapsed_secs();
     let columns = cell_index.columns as usize;
@@ -55,11 +47,9 @@ pub fn glow_system(
             let phase = std::f32::consts::TAU * glow.speed * t + phase_offset;
             let wave = phase.sin();
 
-            // Scale pulse on the cell transform
             let scale = 1.0 + 0.05 * wave;
             transform.scale *= Vec3::splat(scale);
 
-            // Alpha modulation on foreground sprite
             let fg_entity = cell_index.fg_entities[idx];
             if let Ok(mut sprite) = sprites.get_mut(fg_entity) {
                 let base_alpha = sprite.color.alpha();

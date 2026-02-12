@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{GridPosition, TerminalCell};
 use crate::TerminalLayout;
 
@@ -40,11 +40,11 @@ impl Default for Scatter {
 }
 
 /// System that applies the scatter effect to cell transforms.
-pub fn scatter_system(
+pub fn scatter_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    layout: Res<TerminalLayout>,
-    mut effects: Query<(&mut Scatter, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    layout: Res<TerminalLayout<T>>,
+    mut effects: Query<(&mut Scatter, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
 ) {
     for (mut scatter, region) in effects.iter_mut() {
         if !scatter.active {

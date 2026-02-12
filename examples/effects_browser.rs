@@ -7,11 +7,13 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
+struct MyTerminal;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .insert_resource(ClearColor(bevy::color::Color::BLACK))
-        .add_plugins(TerminalEmuPlugin {
+        .add_plugins(TerminalEmuPlugin::<MyTerminal> {
             config: TerminalConfig {
                 columns: 160,
                 rows: 48,
@@ -200,12 +202,12 @@ struct ActiveEffectEntities {
 }
 
 fn handle_input(
-    mut queue: ResMut<TerminalInputQueue>,
+    mut queue: ResMut<TerminalInputQueue<MyTerminal>>,
     mut state: ResMut<BrowserState>,
     mut active: ResMut<ActiveEffectEntities>,
-    mut config: ResMut<TerminalConfig>,
+    mut config: ResMut<TerminalConfig<MyTerminal>>,
     mut commands: Commands,
-    cells: Query<Entity, With<TerminalCell>>,
+    cells: Query<Entity, With<TerminalCell<MyTerminal>>>,
 ) {
     while let Some(event) = queue.events.pop_front() {
         if let terminput::Event::Key(key_event) = event {
@@ -270,13 +272,14 @@ fn sync_effects(
     mut commands: Commands,
     state: Res<BrowserState>,
     mut active: ResMut<ActiveEffectEntities>,
-    cells: Query<Entity, With<TerminalCell>>,
+    cells: Query<Entity, With<TerminalCell<MyTerminal>>>,
     mut collapses: Query<&mut Collapse>,
     mut scatters: Query<&mut Scatter>,
     mut slashes: Query<&mut Slash>,
     mut explodes: Query<&mut Explode>,
 ) {
     let region = state.current_region().to_effect_region();
+    let target = TargetTerminal::<MyTerminal>::default();
 
     for (idx, effect) in state.effects.iter().enumerate() {
         let is_spawned = active.map.contains_key(&idx);
@@ -284,20 +287,20 @@ fn sync_effects(
         if effect.active && !is_spawned {
             // Spawn the effect entity with the current region
             let entity = match idx {
-                0 => commands.spawn((Wave::default(), region.clone())).id(),
-                1 => commands.spawn((Ripple::default(), region.clone())).id(),
-                2 => commands.spawn((Collapse::default(), region.clone())).id(),
-                3 => commands.spawn((Gravity::default(), region.clone())).id(),
-                4 => commands.spawn((Glitch::default(), region.clone())).id(),
-                5 => commands.spawn((Scatter::default(), region.clone())).id(),
-                6 => commands.spawn((Breathe::default(), region.clone())).id(),
-                7 => commands.spawn((Jitter::default(), region.clone())).id(),
-                8 => commands.spawn((Slash::default(), region.clone())).id(),
-                9 => commands.spawn((Explode::default(), region.clone())).id(),
-                10 => commands.spawn((Rainbow::default(), region.clone())).id(),
-                11 => commands.spawn((Glow::default(), region.clone())).id(),
-                12 => commands.spawn((Shiny::default(), region.clone())).id(),
-                13 => commands.spawn((Bubbly::default(), region.clone())).id(),
+                0 => commands.spawn((Wave::default(), region.clone(), target.clone())).id(),
+                1 => commands.spawn((Ripple::default(), region.clone(), target.clone())).id(),
+                2 => commands.spawn((Collapse::default(), region.clone(), target.clone())).id(),
+                3 => commands.spawn((Gravity::default(), region.clone(), target.clone())).id(),
+                4 => commands.spawn((Glitch::default(), region.clone(), target.clone())).id(),
+                5 => commands.spawn((Scatter::default(), region.clone(), target.clone())).id(),
+                6 => commands.spawn((Breathe::default(), region.clone(), target.clone())).id(),
+                7 => commands.spawn((Jitter::default(), region.clone(), target.clone())).id(),
+                8 => commands.spawn((Slash::default(), region.clone(), target.clone())).id(),
+                9 => commands.spawn((Explode::default(), region.clone(), target.clone())).id(),
+                10 => commands.spawn((Rainbow::default(), region.clone(), target.clone())).id(),
+                11 => commands.spawn((Glow::default(), region.clone(), target.clone())).id(),
+                12 => commands.spawn((Shiny::default(), region.clone(), target.clone())).id(),
+                13 => commands.spawn((Bubbly::default(), region.clone(), target.clone())).id(),
                 _ => unreachable!(),
             };
             active.map.insert(idx, entity);
@@ -366,7 +369,7 @@ fn sync_effects(
     }
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource>, state: Res<BrowserState>, config: Res<TerminalConfig>) {
+fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>, state: Res<BrowserState>, config: Res<TerminalConfig<MyTerminal>>) {
     let mut terminal = terminal_res.0.lock().unwrap();
 
     terminal

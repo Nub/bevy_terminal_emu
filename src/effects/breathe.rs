@@ -1,20 +1,13 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{GridPosition, TerminalCell};
 
-/// Rhythmic scale pulse effect.
-///
-/// Cells oscillate in scale with a sinusoidal pattern, with per-cell phase offsets.
 #[derive(Component, Clone, Debug)]
 pub struct Breathe {
-    /// Minimum scale factor.
     pub min_scale: f32,
-    /// Maximum scale factor.
     pub max_scale: f32,
-    /// Oscillation frequency in Hz.
     pub speed: f32,
-    /// Phase spread factor — higher values create more visible staggering between cells.
     pub phase_spread: f32,
 }
 
@@ -29,11 +22,10 @@ impl Default for Breathe {
     }
 }
 
-/// System that applies the breathe effect to cell transforms.
-pub fn breathe_system(
+pub fn breathe_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    effects: Query<(&Breathe, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    effects: Query<(&Breathe, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
 ) {
     let t = time.elapsed_secs();
 

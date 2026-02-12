@@ -6,6 +6,7 @@ pub mod grid;
 pub mod input;
 pub mod sync;
 
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 use bevy::color::Color;
@@ -62,7 +63,7 @@ pub mod prelude {
     pub use crate::effects::shiny::Shiny;
     pub use crate::effects::slash::Slash;
     pub use crate::effects::wave::Wave;
-    pub use crate::effects::{EffectRegion, GridRect};
+    pub use crate::effects::{EffectRegion, GridRect, TargetTerminal};
     pub use crate::grid::{
         BackgroundSprite, BaseTransform, CellEntityIndex, CellStyle, ForegroundSprite,
         GridPosition, TerminalCell,
@@ -76,7 +77,7 @@ pub mod prelude {
 
 /// Configuration for the terminal grid.
 #[derive(Resource, Clone, Debug)]
-pub struct TerminalConfig {
+pub struct TerminalConfig<T: 'static + Send + Sync> {
     /// Number of columns in the terminal.
     pub columns: u16,
     /// Number of rows in the terminal.
@@ -89,9 +90,17 @@ pub struct TerminalConfig {
     pub default_fg: Color,
     /// Default background color.
     pub default_bg: Color,
+    /// Custom origin (top-left of grid) in world space. If None, centered on screen.
+    pub origin_override: Option<Vec2>,
+    /// Z depth for cell entities (default: 0.0).
+    pub z_layer: f32,
+    /// Whether this terminal receives keyboard input (default: true).
+    pub receive_input: bool,
+    #[doc(hidden)]
+    pub _marker: PhantomData<T>,
 }
 
-impl Default for TerminalConfig {
+impl<T: 'static + Send + Sync> Default for TerminalConfig<T> {
     fn default() -> Self {
         Self {
             columns: 80,
@@ -100,6 +109,10 @@ impl Default for TerminalConfig {
             font: FontSource::Default,
             default_fg: Color::srgb(0.9, 0.9, 0.9),
             default_bg: Color::srgb(0.1, 0.1, 0.1),
+            origin_override: None,
+            z_layer: 0.0,
+            receive_input: true,
+            _marker: PhantomData,
         }
     }
 }
@@ -107,16 +120,18 @@ impl Default for TerminalConfig {
 /// Derived layout properties computed from font metrics and terminal dimensions.
 /// Created automatically by the plugin — do not construct manually.
 #[derive(Resource, Clone, Debug)]
-pub struct TerminalLayout {
+pub struct TerminalLayout<T: 'static + Send + Sync> {
     /// Width of each cell in pixels (derived from font advance width).
     pub cell_width: f32,
     /// Height of each cell in pixels (derived from font line height).
     pub cell_height: f32,
     /// World-space origin (top-left corner of the grid), centered on screen.
     pub origin: Vec2,
+    #[doc(hidden)]
+    pub _marker: PhantomData<T>,
 }
 
-impl TerminalLayout {
+impl<T: 'static + Send + Sync> TerminalLayout<T> {
     /// Background sprite size with a small overlap to fill sub-pixel gaps.
     /// Foreground sprites should use exact cell dimensions to avoid clipping.
     pub fn bg_sprite_size(&self) -> Vec2 {
@@ -128,17 +143,21 @@ impl TerminalLayout {
     /// Cell dimensions are ceil'd to integer pixels so that foreground sprites
     /// can render at an exact 1:1 pixel ratio with the atlas tile — no scaling,
     /// no nearest-filter pixel loss.
-    pub fn from_config(config: &TerminalConfig) -> Self {
+    pub fn from_config(config: &TerminalConfig<T>) -> Self {
         let (cw, ch) = atlas::compute_cell_size(config.font.bytes(), config.font_size);
         let cell_width = cw.ceil();
         let cell_height = ch.ceil();
+        let origin = config.origin_override.unwrap_or_else(|| {
+            Vec2::new(
+                -(config.columns as f32 * cell_width) / 2.0,
+                (config.rows as f32 * cell_height) / 2.0,
+            )
+        });
         Self {
             cell_width,
             cell_height,
-            origin: Vec2::new(
-                -(config.columns as f32 * cell_width) / 2.0,
-                (config.rows as f32 * cell_height) / 2.0,
-            ),
+            origin,
+            _marker: PhantomData,
         }
     }
 }
@@ -146,7 +165,16 @@ impl TerminalLayout {
 /// Shared resource wrapping the ratatui Terminal<BevyBackend> in an Arc<Mutex<>>
 /// for access from both the ratatui app tick and the Bevy sync system.
 #[derive(Resource, Clone)]
-pub struct TerminalResource(pub Arc<Mutex<ratatui::Terminal<BevyBackend>>>);
+pub struct TerminalResource<T: 'static + Send + Sync>(
+    pub Arc<Mutex<ratatui::Terminal<BevyBackend>>>,
+    PhantomData<T>,
+);
+
+impl<T: 'static + Send + Sync> TerminalResource<T> {
+    pub fn new(terminal: ratatui::Terminal<BevyBackend>) -> Self {
+        Self(Arc::new(Mutex::new(terminal)), PhantomData)
+    }
+}
 
 /// System sets for ordering terminal systems.
 ///
@@ -165,11 +193,12 @@ pub enum TerminalSet {
 }
 
 /// The main plugin that sets up the terminal emulator.
-pub struct TerminalEmuPlugin {
-    pub config: TerminalConfig,
+/// Generic over a marker type `T` to support multiple independent terminal instances.
+pub struct TerminalEmuPlugin<T: 'static + Send + Sync> {
+    pub config: TerminalConfig<T>,
 }
 
-impl Default for TerminalEmuPlugin {
+impl<T: 'static + Send + Sync> Default for TerminalEmuPlugin<T> {
     fn default() -> Self {
         Self {
             config: TerminalConfig::default(),
@@ -177,21 +206,24 @@ impl Default for TerminalEmuPlugin {
     }
 }
 
-impl Plugin for TerminalEmuPlugin {
+impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
     fn build(&self, app: &mut App) {
-        let config = self.config.clone();
+        let config = clone_config(&self.config);
         let layout = TerminalLayout::from_config(&config);
         let backend = BevyBackend::new(config.columns, config.rows);
         let terminal = ratatui::Terminal::new(backend).expect("Failed to create ratatui terminal");
-        let terminal_resource = TerminalResource(Arc::new(Mutex::new(terminal)));
+        let terminal_resource = TerminalResource::<T>::new(terminal);
 
         app.insert_resource(config)
             .insert_resource(layout)
             .insert_resource(terminal_resource)
-            .insert_resource(TerminalInputQueue::default())
-            .insert_resource(SyncGeneration::default())
-            // Configure system set ordering
-            .configure_sets(
+            .insert_resource(TerminalInputQueue::<T>::default())
+            .insert_resource(SyncGeneration::<T>::default());
+
+        // Only configure system set ordering once (first plugin instance)
+        if !app.world().contains_resource::<TerminalSetConfigured>() {
+            app.insert_resource(TerminalSetConfigured);
+            app.configure_sets(
                 Update,
                 (
                     TerminalSet::AppTick,
@@ -200,52 +232,81 @@ impl Plugin for TerminalEmuPlugin {
                     TerminalSet::Effects,
                 )
                     .chain(),
-            )
-            // Startup: generate atlas, then spawn grid (chained because grid needs atlas)
-            .add_systems(
-                Startup,
-                (atlas::generate_font_atlas, grid::spawn_grid).chain(),
-            )
-            // Update systems in their respective sets
-            .add_systems(
-                Update,
-                input::forward_input.in_set(TerminalSet::AppTick),
-            )
-            .add_systems(
-                Update,
-                (
-                    atlas::expand_font_atlas,
-                    atlas::rebuild_font_atlas,
-                    sync::sync_buffer_to_entities,
-                )
-                    .chain()
-                    .in_set(TerminalSet::Sync),
-            )
-            .add_systems(
-                Update,
-                (effects::reset_transforms, effects::reset_colors)
-                    .in_set(TerminalSet::ResetTransforms),
-            )
-            .add_systems(
-                Update,
-                (
-                    effects::breathe::breathe_system,
-                    effects::bubbly::bubbly_system,
-                    effects::collapse::collapse_system,
-                    effects::explode::explode_system,
-                    effects::glitch::glitch_system,
-                    effects::glow::glow_system,
-                    effects::gravity::gravity_system,
-                    effects::jitter::jitter_system,
-                    effects::knock::knock_system,
-                    effects::rainbow::rainbow_system,
-                    effects::ripple::ripple_system,
-                    effects::scatter::scatter_system,
-                    effects::shiny::shiny_system,
-                    effects::slash::slash_system,
-                    effects::wave::wave_system,
-                )
-                    .in_set(TerminalSet::Effects),
             );
+        }
+
+        // Startup: generate atlas, then spawn grid (chained because grid needs atlas)
+        app.add_systems(
+            Startup,
+            (atlas::generate_font_atlas::<T>, grid::spawn_grid::<T>).chain(),
+        );
+
+        // Update systems in their respective sets
+        if self.config.receive_input {
+            app.add_systems(
+                Update,
+                input::forward_input::<T>.in_set(TerminalSet::AppTick),
+            );
+        }
+
+        app.add_systems(
+            Update,
+            (
+                atlas::expand_font_atlas::<T>,
+                atlas::rebuild_font_atlas::<T>,
+                sync::sync_buffer_to_entities::<T>,
+            )
+                .chain()
+                .in_set(TerminalSet::Sync),
+        )
+        .add_systems(
+            Update,
+            (
+                effects::reset_transforms::<T>,
+                effects::reset_colors::<T>,
+            )
+                .in_set(TerminalSet::ResetTransforms),
+        )
+        .add_systems(
+            Update,
+            (
+                effects::breathe::breathe_system::<T>,
+                effects::bubbly::bubbly_system::<T>,
+                effects::collapse::collapse_system::<T>,
+                effects::explode::explode_system::<T>,
+                effects::glitch::glitch_system::<T>,
+                effects::glow::glow_system::<T>,
+                effects::gravity::gravity_system::<T>,
+                effects::jitter::jitter_system::<T>,
+                effects::knock::knock_system::<T>,
+                effects::rainbow::rainbow_system::<T>,
+                effects::ripple::ripple_system::<T>,
+                effects::scatter::scatter_system::<T>,
+                effects::shiny::shiny_system::<T>,
+                effects::slash::slash_system::<T>,
+                effects::wave::wave_system::<T>,
+            )
+                .in_set(TerminalSet::Effects),
+        );
+    }
+}
+
+/// Marker resource to ensure TerminalSet is only configured once.
+#[derive(Resource)]
+struct TerminalSetConfigured;
+
+/// Clone a TerminalConfig without requiring T: Clone (T is only PhantomData).
+fn clone_config<T: 'static + Send + Sync>(c: &TerminalConfig<T>) -> TerminalConfig<T> {
+    TerminalConfig {
+        columns: c.columns,
+        rows: c.rows,
+        font_size: c.font_size,
+        font: c.font.clone(),
+        default_fg: c.default_fg,
+        default_bg: c.default_bg,
+        origin_override: c.origin_override,
+        z_layer: c.z_layer,
+        receive_input: c.receive_input,
+        _marker: PhantomData,
     }
 }

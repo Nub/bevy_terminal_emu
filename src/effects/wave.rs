@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{GridPosition, TerminalCell};
 
 /// A simple sine wave effect that oscillates cells vertically.
@@ -28,10 +28,10 @@ impl Default for Wave {
 }
 
 /// System that applies the wave effect to cell transforms.
-pub fn wave_system(
+pub fn wave_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    effects: Query<(&Wave, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    effects: Query<(&Wave, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
 ) {
     let t = time.elapsed_secs();
 

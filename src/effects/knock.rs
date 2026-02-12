@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::{simple_hash, EffectRegion};
+use super::{simple_hash, EffectRegion, TargetTerminal};
 use crate::grid::{GridPosition, TerminalCell};
 use crate::TerminalLayout;
 
@@ -40,11 +40,11 @@ impl Default for Knock {
 }
 
 /// System that applies the knock effect to cell transforms.
-pub fn knock_system(
+pub fn knock_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    layout: Res<TerminalLayout>,
-    mut effects: Query<(&mut Knock, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    layout: Res<TerminalLayout<T>>,
+    mut effects: Query<(&mut Knock, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
 ) {
     for (mut knock, region) in effects.iter_mut() {
         if !knock.active {

@@ -1,20 +1,31 @@
 use std::collections::VecDeque;
+use std::marker::PhantomData;
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 
 /// Queue of terminal input events for the ratatui app to consume.
-#[derive(Resource, Default)]
-pub struct TerminalInputQueue {
+#[derive(Resource)]
+pub struct TerminalInputQueue<T: 'static + Send + Sync> {
     pub events: VecDeque<terminput::Event>,
+    _marker: PhantomData<T>,
+}
+
+impl<T: 'static + Send + Sync> Default for TerminalInputQueue<T> {
+    fn default() -> Self {
+        Self {
+            events: VecDeque::new(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 /// System that forwards Bevy keyboard events to the terminal input queue.
-pub fn forward_input(
+pub fn forward_input<T: 'static + Send + Sync>(
     mut keyboard_events: MessageReader<KeyboardInput>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut queue: ResMut<TerminalInputQueue>,
+    mut queue: ResMut<TerminalInputQueue<T>>,
 ) {
     for event in keyboard_events.read() {
         // Only process key presses (not releases)

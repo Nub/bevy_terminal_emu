@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bevy::prelude::*;
 use ratatui::style::Modifier;
 
@@ -7,30 +9,42 @@ use crate::grid::{BackgroundSprite, CellEntityIndex, CellStyle, ForegroundSprite
 use crate::{TerminalResource, TerminalConfig};
 
 /// Resource tracking the last synced generation to skip redundant updates.
-#[derive(Resource, Default)]
-pub struct SyncGeneration(pub u64);
+#[derive(Resource)]
+pub struct SyncGeneration<T: 'static + Send + Sync> {
+    pub generation: u64,
+    _marker: PhantomData<T>,
+}
+
+impl<T: 'static + Send + Sync> Default for SyncGeneration<T> {
+    fn default() -> Self {
+        Self {
+            generation: 0,
+            _marker: PhantomData,
+        }
+    }
+}
 
 /// Sync the backend buffer contents to cell entity sprites each frame.
 ///
 /// Only processes cells marked dirty by the backend, and uses compare-before-write
 /// to avoid triggering Bevy change detection on unchanged components.
-pub fn sync_buffer_to_entities(
-    terminal_res: Res<TerminalResource>,
-    config: Res<TerminalConfig>,
-    mut atlas: ResMut<FontAtlasResource>,
-    cell_index: Res<CellEntityIndex>,
-    mut sync_gen: ResMut<SyncGeneration>,
-    mut cell_query: Query<(&mut CellStyle, &mut Sprite), With<BackgroundSprite>>,
-    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<BackgroundSprite>)>,
+pub fn sync_buffer_to_entities<T: 'static + Send + Sync>(
+    terminal_res: Res<TerminalResource<T>>,
+    config: Res<TerminalConfig<T>>,
+    mut atlas: ResMut<FontAtlasResource<T>>,
+    cell_index: Res<CellEntityIndex<T>>,
+    mut sync_gen: ResMut<SyncGeneration<T>>,
+    mut cell_query: Query<(&mut CellStyle, &mut Sprite), With<BackgroundSprite<T>>>,
+    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite<T>>, Without<BackgroundSprite<T>>)>,
 ) {
     let mut terminal = terminal_res.0.lock().unwrap();
     let generation = terminal.backend().generation();
 
     // Skip if nothing has changed
-    if generation == sync_gen.0 {
+    if generation == sync_gen.generation {
         return;
     }
-    sync_gen.0 = generation;
+    sync_gen.generation = generation;
 
     // Collect dirty cell indices while holding immutable borrow
     let columns = config.columns as usize;

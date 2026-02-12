@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{CellEntityIndex, ForegroundSprite};
 
 /// Sweeping highlight band effect.
@@ -36,11 +36,11 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 }
 
 /// System that applies the shiny sweep effect to foreground sprites.
-pub fn shiny_system(
+pub fn shiny_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    effects: Query<(&Shiny, &EffectRegion)>,
-    cell_index: Res<CellEntityIndex>,
-    mut sprites: Query<&mut Sprite, With<ForegroundSprite>>,
+    effects: Query<(&Shiny, &EffectRegion), With<TargetTerminal<T>>>,
+    cell_index: Res<CellEntityIndex<T>>,
+    mut sprites: Query<&mut Sprite, With<ForegroundSprite<T>>>,
 ) {
     let t = time.elapsed_secs();
     let columns = cell_index.columns as usize;

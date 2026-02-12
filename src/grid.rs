@@ -1,12 +1,20 @@
+use std::marker::PhantomData;
+
 use bevy::color::Color;
 use bevy::prelude::*;
 
 use crate::atlas::FontAtlasResource;
 use crate::{TerminalConfig, TerminalLayout};
 
-/// Marker component for terminal cell entities.
+/// Marker component for terminal cell entities, scoped by terminal instance.
 #[derive(Component)]
-pub struct TerminalCell;
+pub struct TerminalCell<T: 'static + Send + Sync>(PhantomData<T>);
+
+impl<T: 'static + Send + Sync> Default for TerminalCell<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
 
 /// Logical grid position of a cell.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -49,24 +57,37 @@ pub struct BaseTransform {
     pub scale: Vec3,
 }
 
-/// Marker for the background sprite child entity.
+/// Marker for the background sprite child entity, scoped by terminal instance.
 #[derive(Component)]
-pub struct BackgroundSprite;
+pub struct BackgroundSprite<T: 'static + Send + Sync>(PhantomData<T>);
 
-/// Marker for the foreground sprite child entity.
+impl<T: 'static + Send + Sync> Default for BackgroundSprite<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+/// Marker for the foreground sprite child entity, scoped by terminal instance.
 #[derive(Component)]
-pub struct ForegroundSprite;
+pub struct ForegroundSprite<T: 'static + Send + Sync>(PhantomData<T>);
 
-/// O(1) lookup of cell entities by grid position.
+impl<T: 'static + Send + Sync> Default for ForegroundSprite<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+/// O(1) lookup of cell entities by grid position, scoped by terminal instance.
 #[derive(Resource)]
-pub struct CellEntityIndex {
+pub struct CellEntityIndex<T: 'static + Send + Sync> {
     pub entities: Vec<Entity>,
     pub fg_entities: Vec<Entity>,
     pub columns: u16,
     pub rows: u16,
+    _marker: PhantomData<T>,
 }
 
-impl CellEntityIndex {
+impl<T: 'static + Send + Sync> CellEntityIndex<T> {
     /// Get the parent entity at (col, row).
     pub fn get(&self, col: u16, row: u16) -> Option<Entity> {
         if col < self.columns && row < self.rows {
@@ -87,11 +108,11 @@ impl CellEntityIndex {
 }
 
 /// Startup system that spawns the grid of cell entities.
-pub fn spawn_grid(
+pub fn spawn_grid<T: 'static + Send + Sync>(
     mut commands: Commands,
-    config: Res<TerminalConfig>,
-    layout: Res<TerminalLayout>,
-    atlas: Res<FontAtlasResource>,
+    config: Res<TerminalConfig<T>>,
+    layout: Res<TerminalLayout<T>>,
+    atlas: Res<FontAtlasResource<T>>,
 ) {
     let total = config.columns as usize * config.rows as usize;
     let mut entities = Vec::with_capacity(total);
@@ -108,12 +129,12 @@ pub fn spawn_grid(
                 layout.origin.x + (col as f32) * layout.cell_width + layout.cell_width / 2.0;
             let world_y =
                 layout.origin.y - (row as f32) * layout.cell_height - layout.cell_height / 2.0;
-            let translation = Vec3::new(world_x, world_y, 0.0);
+            let translation = Vec3::new(world_x, world_y, config.z_layer);
 
             // Spawn foreground sprite as a standalone entity first
             let fg_entity = commands
                 .spawn((
-                    ForegroundSprite,
+                    ForegroundSprite::<T>::default(),
                     Sprite {
                         image: atlas.image.clone(),
                         texture_atlas: Some(TextureAtlas {
@@ -131,10 +152,10 @@ pub fn spawn_grid(
             // Spawn parent with BG sprite directly on it, then add FG as child
             let cell_entity = commands
                 .spawn((
-                    TerminalCell,
+                    TerminalCell::<T>::default(),
                     GridPosition { col, row },
                     CellStyle::default(),
-                    BackgroundSprite,
+                    BackgroundSprite::<T>::default(),
                     Sprite::from_color(Color::srgb(0.0, 0.0, 0.0), bg_size),
                     BaseTransform {
                         translation,
@@ -152,10 +173,11 @@ pub fn spawn_grid(
         }
     }
 
-    commands.insert_resource(CellEntityIndex {
+    commands.insert_resource(CellEntityIndex::<T> {
         entities,
         fg_entities,
         columns: config.columns,
         rows: config.rows,
+        _marker: PhantomData,
     });
 }

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::{simple_hash, EffectRegion};
+use super::{simple_hash, EffectRegion, TargetTerminal};
 use crate::grid::{GridPosition, TerminalCell};
 
 /// Per-cell random vibration effect.
@@ -30,10 +30,10 @@ impl Default for Jitter {
 }
 
 /// System that applies the jitter effect to cell transforms.
-pub fn jitter_system(
+pub fn jitter_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    effects: Query<(&Jitter, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    effects: Query<(&Jitter, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
 ) {
     let t = time.elapsed_secs();
 

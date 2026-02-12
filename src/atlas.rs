@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::marker::PhantomData;
 
 use ab_glyph::{Font, FontRef, ScaleFont};
 use bevy::asset::RenderAssetUsages;
@@ -11,7 +12,7 @@ use crate::grid::{BackgroundSprite, BaseTransform, CellEntityIndex, ForegroundSp
 
 /// Holds the generated font atlas texture, layout, and glyph mapping.
 #[derive(Resource)]
-pub struct FontAtlasResource {
+pub struct FontAtlasResource<T: 'static + Send + Sync> {
     pub image: Handle<Image>,
     pub layout: Handle<TextureAtlasLayout>,
     pub glyph_map: HashMap<char, usize>,
@@ -25,6 +26,7 @@ pub struct FontAtlasResource {
     pub pending_glyphs: HashSet<char>,
     /// Number of glyphs currently in the atlas.
     pub glyph_count: usize,
+    _marker: PhantomData<T>,
 }
 
 /// Number of columns in the atlas grid.
@@ -151,11 +153,11 @@ fn build_atlas_data_for_chars(font_bytes: &[u8], font_size: f32, chars: &[char])
 }
 
 /// Generate the font atlas as a startup system.
-pub fn generate_font_atlas(
+pub fn generate_font_atlas<T: 'static + Send + Sync>(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
-    config: Res<crate::TerminalConfig>,
+    config: Res<crate::TerminalConfig<T>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
     let scale_factor = window_query
@@ -170,7 +172,7 @@ pub fn generate_font_atlas(
     let image_handle = images.add(data.image);
     let layout_handle = layouts.add(data.layout);
 
-    commands.insert_resource(FontAtlasResource {
+    commands.insert_resource(FontAtlasResource::<T> {
         image: image_handle,
         layout: layout_handle,
         glyph_map: data.glyph_map,
@@ -180,20 +182,21 @@ pub fn generate_font_atlas(
         font_bytes,
         pending_glyphs: HashSet::new(),
         glyph_count: data.glyph_count,
+        _marker: PhantomData,
     });
 }
 
 /// Expands the font atlas when new (previously unseen) characters are pending.
 /// Runs before `rebuild_font_atlas` so that new glyphs are available for the
 /// current frame's sync pass.
-pub fn expand_font_atlas(
-    mut atlas: ResMut<FontAtlasResource>,
-    terminal_res: Res<crate::TerminalResource>,
-    layout: Res<crate::TerminalLayout>,
+pub fn expand_font_atlas<T: 'static + Send + Sync>(
+    mut atlas: ResMut<FontAtlasResource<T>>,
+    terminal_res: Res<crate::TerminalResource<T>>,
+    layout: Res<crate::TerminalLayout<T>>,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
-    cell_index: Res<CellEntityIndex>,
-    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<BackgroundSprite>)>,
+    cell_index: Res<CellEntityIndex<T>>,
+    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite<T>>, Without<BackgroundSprite<T>>)>,
 ) {
     if atlas.pending_glyphs.is_empty() {
         return;
@@ -254,16 +257,16 @@ pub fn expand_font_atlas(
 
 /// Detects when `TerminalConfig.font_size` has changed and rebuilds the atlas,
 /// cell positions, and sprite sizes to match.
-pub fn rebuild_font_atlas(
-    config: Res<crate::TerminalConfig>,
-    mut layout: ResMut<crate::TerminalLayout>,
-    mut atlas: ResMut<FontAtlasResource>,
+pub fn rebuild_font_atlas<T: 'static + Send + Sync>(
+    config: Res<crate::TerminalConfig<T>>,
+    mut layout: ResMut<crate::TerminalLayout<T>>,
+    mut atlas: ResMut<FontAtlasResource<T>>,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
-    cell_index: Res<CellEntityIndex>,
+    cell_index: Res<CellEntityIndex<T>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
-    mut parent_query: Query<(&GridPosition, &mut BaseTransform, &mut Transform, &mut Sprite), With<TerminalCell>>,
-    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite>, Without<TerminalCell>)>,
+    mut parent_query: Query<(&GridPosition, &mut BaseTransform, &mut Transform, &mut Sprite), With<TerminalCell<T>>>,
+    mut fg_query: Query<&mut Sprite, (With<ForegroundSprite<T>>, Without<TerminalCell<T>>)>,
 ) {
     let scale_factor = window_query
         .single()
@@ -301,7 +304,7 @@ pub fn rebuild_font_atlas(
         let world_y = layout.origin.y
             - (grid_pos.row as f32) * layout.cell_height
             - layout.cell_height / 2.0;
-        let translation = Vec3::new(world_x, world_y, 0.0);
+        let translation = Vec3::new(world_x, world_y, config.z_layer);
         base_tf.translation = translation;
         transform.translation = translation;
         bg_sprite.custom_size = Some(bg_size);

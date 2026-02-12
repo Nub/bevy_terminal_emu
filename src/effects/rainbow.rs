@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{CellEntityIndex, ForegroundSprite};
 
 /// Rainbow color cycling effect.
@@ -30,11 +30,11 @@ impl Default for Rainbow {
 }
 
 /// System that applies the rainbow effect to foreground sprite colors.
-pub fn rainbow_system(
+pub fn rainbow_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    effects: Query<(&Rainbow, &EffectRegion)>,
-    cell_index: Res<CellEntityIndex>,
-    mut sprites: Query<&mut Sprite, With<ForegroundSprite>>,
+    effects: Query<(&Rainbow, &EffectRegion), With<TargetTerminal<T>>>,
+    cell_index: Res<CellEntityIndex<T>>,
+    mut sprites: Query<&mut Sprite, With<ForegroundSprite<T>>>,
 ) {
     let t = time.elapsed_secs();
     let columns = cell_index.columns as usize;

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{GridPosition, TerminalCell};
 
 /// A ripple effect that displaces cells in a wave pattern from an origin point.
@@ -37,10 +37,10 @@ impl Default for Ripple {
 }
 
 /// System that applies the ripple effect to cell transforms.
-pub fn ripple_system(
+pub fn ripple_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    mut effects: Query<(&mut Ripple, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    mut effects: Query<(&mut Ripple, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
 ) {
     for (mut ripple, region) in effects.iter_mut() {
         ripple.phase += ripple.speed * time.delta_secs();

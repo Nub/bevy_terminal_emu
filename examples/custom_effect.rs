@@ -2,10 +2,12 @@ use bevy::prelude::*;
 use bevy_terminal_emu::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
+struct MyTerminal;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        .add_plugins(TerminalEmuPlugin::default())
+        .add_plugins(TerminalEmuPlugin::<MyTerminal>::default())
         .add_systems(Startup, (setup_camera, spawn_spin_effect))
         .add_systems(Update, draw_ui.in_set(TerminalSet::AppTick))
         .add_systems(Update, spin_system.in_set(TerminalSet::Effects))
@@ -31,14 +33,15 @@ fn spawn_spin_effect(mut commands: Commands) {
             max_angle: 0.15,
         },
         EffectRegion::all(),
+        TargetTerminal::<MyTerminal>::default(),
     ));
 }
 
 // Step 3: Write a system that queries effects and cells
 fn spin_system(
     time: Res<Time>,
-    effects: Query<(&SpinEffect, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    effects: Query<(&SpinEffect, &EffectRegion), With<TargetTerminal<MyTerminal>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<MyTerminal>>>,
 ) {
     let t = time.elapsed_secs();
 
@@ -57,7 +60,7 @@ fn spin_system(
     }
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource>) {
+fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>) {
     let mut terminal = terminal_res.0.lock().unwrap();
 
     terminal

@@ -2,10 +2,12 @@ use bevy::prelude::*;
 use bevy_terminal_emu::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
+struct MyTerminal;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        .add_plugins(TerminalEmuPlugin::default())
+        .add_plugins(TerminalEmuPlugin::<MyTerminal>::default())
         .add_systems(Startup, setup_camera)
         .add_systems(Update, draw_ui.in_set(TerminalSet::AppTick))
         .add_systems(Update, debug_system)
@@ -22,7 +24,7 @@ fn setup_camera(mut commands: Commands) {
     ));
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource>) {
+fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>) {
     let mut terminal = terminal_res.0.lock().unwrap();
 
     terminal
@@ -38,11 +40,11 @@ fn draw_ui(terminal_res: Res<TerminalResource>) {
 }
 
 fn debug_system(
-    atlas: Res<FontAtlasResource>,
+    atlas: Res<FontAtlasResource<MyTerminal>>,
     images: Res<Assets<Image>>,
     layouts: Res<Assets<TextureAtlasLayout>>,
-    fg_sprites: Query<&Sprite, With<ForegroundSprite>>,
-    bg_sprites: Query<&Sprite, With<BackgroundSprite>>,
+    fg_sprites: Query<&Sprite, With<ForegroundSprite<MyTerminal>>>,
+    bg_sprites: Query<&Sprite, With<BackgroundSprite<MyTerminal>>>,
     mut frame_count: Local<u32>,
 ) {
     *frame_count += 1;

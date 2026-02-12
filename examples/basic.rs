@@ -2,12 +2,14 @@ use bevy::prelude::*;
 use bevy_terminal_emu::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
+struct MyTerminal;
+
 fn main() {
     // Example: use an alternative font by uncommenting the line below
     // let font = FontSource::from_file("assets/FiraCodeNerdFont-Regular.ttf");
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        .add_plugins(TerminalEmuPlugin::default())
+        .add_plugins(TerminalEmuPlugin::<MyTerminal>::default())
         .add_systems(Startup, setup_camera)
         .add_systems(Update, draw_ui.in_set(TerminalSet::AppTick))
         .run();
@@ -17,7 +19,7 @@ fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource>) {
+fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>) {
     let mut terminal = terminal_res.0.lock().unwrap();
 
     terminal

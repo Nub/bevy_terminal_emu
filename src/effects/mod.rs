@@ -14,6 +14,8 @@ pub mod shiny;
 pub mod slash;
 pub mod wave;
 
+use std::marker::PhantomData;
+
 use bevy::prelude::*;
 
 use crate::grid::{BaseTransform, CellEntityIndex, CellStyle, ForegroundSprite, TerminalCell};
@@ -93,12 +95,29 @@ impl EffectRegion {
     }
 }
 
+/// Marker component that scopes an effect entity to a specific terminal instance.
+/// Effects without this component are ignored by generic effect systems.
+#[derive(Component)]
+pub struct TargetTerminal<T: 'static + Send + Sync>(PhantomData<T>);
+
+impl<T: 'static + Send + Sync> Clone for TargetTerminal<T> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T: 'static + Send + Sync> Default for TargetTerminal<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
 /// System that resets all cell transforms to their base positions each frame.
 /// This runs before effects so they can additively modify transforms.
 /// Uses compare-before-write to avoid triggering Bevy change detection when
 /// transforms are already at base (i.e. no effects modified them last frame).
-pub fn reset_transforms(
-    mut query: Query<(&BaseTransform, &mut Transform), With<TerminalCell>>,
+pub fn reset_transforms<T: 'static + Send + Sync>(
+    mut query: Query<(&BaseTransform, &mut Transform), With<TerminalCell<T>>>,
 ) {
     for (base, mut transform) in query.iter_mut() {
         if transform.translation != base.translation
@@ -115,10 +134,10 @@ pub fn reset_transforms(
 /// Resets foreground sprite colors to their CellStyle values each frame.
 /// Effects that modify sprite color (Glow, Rainbow, Shiny) run after this,
 /// so their changes last exactly one frame and don't accumulate.
-pub fn reset_colors(
-    cell_index: Res<CellEntityIndex>,
-    cell_query: Query<&CellStyle, With<TerminalCell>>,
-    mut fg_query: Query<&mut Sprite, With<ForegroundSprite>>,
+pub fn reset_colors<T: 'static + Send + Sync>(
+    cell_index: Res<CellEntityIndex<T>>,
+    cell_query: Query<&CellStyle, With<TerminalCell<T>>>,
+    mut fg_query: Query<&mut Sprite, With<ForegroundSprite<T>>>,
 ) {
     for (idx, &parent_entity) in cell_index.entities.iter().enumerate() {
         let Ok(cell_style) = cell_query.get(parent_entity) else {

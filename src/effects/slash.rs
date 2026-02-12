@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::EffectRegion;
+use super::{EffectRegion, TargetTerminal};
 use crate::grid::{GridPosition, TerminalCell};
 use crate::TerminalLayout;
 
@@ -41,11 +41,11 @@ impl Default for Slash {
 }
 
 /// System that applies the slash effect to cell transforms.
-pub fn slash_system(
+pub fn slash_system<T: 'static + Send + Sync>(
     time: Res<Time>,
-    layout: Res<TerminalLayout>,
-    mut effects: Query<(&mut Slash, &EffectRegion)>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell>>,
+    layout: Res<TerminalLayout<T>>,
+    mut effects: Query<(&mut Slash, &EffectRegion), With<TargetTerminal<T>>>,
+    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
 ) {
     for (mut slash, region) in effects.iter_mut() {
         if !slash.active {
