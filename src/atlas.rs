@@ -123,7 +123,7 @@ fn build_atlas_data_for_chars(font_bytes: &[u8], font_size: f32, chars: &[char])
         }
     }
 
-    let image = Image::new(
+    let mut image = Image::new(
         Extent3d {
             width: atlas_width,
             height: atlas_height,
@@ -134,6 +134,9 @@ fn build_atlas_data_for_chars(font_bytes: &[u8], font_size: f32, chars: &[char])
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::default(),
     );
+    // Use linear filtering so anti-aliased glyphs stay smooth even when the
+    // app default sampler is set to nearest (common for pixel-art games).
+    image.sampler = bevy::image::ImageSampler::linear();
 
     let layout = TextureAtlasLayout::from_grid(
         cell_size,
