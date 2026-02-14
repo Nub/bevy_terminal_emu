@@ -165,8 +165,15 @@ fn align_layout_to_atlas<T: 'static + Send + Sync>(
     atlas_cell_size: UVec2,
     scale_factor: f32,
 ) {
-    layout.cell_width = atlas_cell_size.x as f32 / scale_factor;
-    layout.cell_height = atlas_cell_size.y as f32 / scale_factor;
+    // When cell_size_override is set, honour it — the caller has explicitly
+    // decoupled grid spacing from glyph rasterisation (e.g. portrait overlay).
+    if let Some(cell_override) = config.cell_size_override {
+        layout.cell_width = cell_override.x;
+        layout.cell_height = cell_override.y;
+    } else {
+        layout.cell_width = atlas_cell_size.x as f32 / scale_factor;
+        layout.cell_height = atlas_cell_size.y as f32 / scale_factor;
+    }
     let raw_origin = config.origin_override.unwrap_or_else(|| {
         Vec2::new(
             -(config.columns as f32 * layout.cell_width) / 2.0,
