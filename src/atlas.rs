@@ -155,12 +155,35 @@ fn build_atlas_data_for_chars(font_bytes: &[u8], font_size: f32, chars: &[char])
     }
 }
 
+/// Correct layout cell dimensions so that `cell_width * scale_factor` exactly
+/// equals the atlas cell texel count.  This guarantees 1:1 texel-to-physical-pixel
+/// mapping on the sprite quad (no stretching / blurriness).
+/// The origin is also snapped to physical pixel boundaries.
+fn align_layout_to_atlas<T: 'static + Send + Sync>(
+    layout: &mut crate::TerminalLayout<T>,
+    config: &crate::TerminalConfig<T>,
+    atlas_cell_size: UVec2,
+    scale_factor: f32,
+) {
+    layout.cell_width = atlas_cell_size.x as f32 / scale_factor;
+    layout.cell_height = atlas_cell_size.y as f32 / scale_factor;
+    let raw_origin = config.origin_override.unwrap_or_else(|| {
+        Vec2::new(
+            -(config.columns as f32 * layout.cell_width) / 2.0,
+            (config.rows as f32 * layout.cell_height) / 2.0,
+        )
+    });
+    // Round in physical-pixel space so the grid's top-left lands on a pixel boundary.
+    layout.origin = (raw_origin * scale_factor).round() / scale_factor;
+}
+
 /// Generate the font atlas as a startup system.
 pub fn generate_font_atlas<T: 'static + Send + Sync>(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     config: Res<crate::TerminalConfig<T>>,
+    mut layout: ResMut<crate::TerminalLayout<T>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
     let scale_factor = window_query
@@ -174,6 +197,9 @@ pub fn generate_font_atlas<T: 'static + Send + Sync>(
     let data = build_atlas_data_for_chars(&font_bytes, raster_size, &chars);
     let image_handle = images.add(data.image);
     let layout_handle = layouts.add(data.layout);
+
+    // Align layout cell dimensions to the atlas so sprites render 1:1.
+    align_layout_to_atlas(&mut layout, &config, data.cell_size, scale_factor);
 
     commands.insert_resource(FontAtlasResource::<T> {
         image: image_handle,
@@ -280,15 +306,16 @@ pub fn rebuild_font_atlas<T: 'static + Send + Sync>(
         return;
     }
 
-    // Recompute layout from font metrics
-    *layout = crate::TerminalLayout::from_config(&config);
-
     // Rebuild the atlas at the new font size with all currently known chars
     let mut all_chars: Vec<char> = atlas.glyph_map.keys().copied().collect();
     all_chars.sort();
 
     let raster_size = config.font_size * scale_factor;
     let data = build_atlas_data_for_chars(&atlas.font_bytes, raster_size, &all_chars);
+
+    // Recompute layout from atlas cell dimensions for 1:1 texel mapping.
+    *layout = crate::TerminalLayout::from_config(&config);
+    align_layout_to_atlas(&mut layout, &config, data.cell_size, scale_factor);
     let image_handle = images.add(data.image);
     let layout_handle = layouts.add(data.layout);
     atlas.image = image_handle.clone();
