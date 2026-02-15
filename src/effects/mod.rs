@@ -12,6 +12,7 @@ pub mod ripple;
 pub mod scatter;
 pub mod shiny;
 pub mod slash;
+pub mod tint;
 pub mod wave;
 
 use std::marker::PhantomData;

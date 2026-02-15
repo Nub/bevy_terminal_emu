@@ -62,6 +62,7 @@ pub mod prelude {
     pub use crate::effects::scatter::Scatter;
     pub use crate::effects::shiny::Shiny;
     pub use crate::effects::slash::Slash;
+    pub use crate::effects::tint::Tint;
     pub use crate::effects::wave::Wave;
     pub use crate::effects::{EffectRegion, GridRect, TargetTerminal};
     pub use crate::grid::{
@@ -100,6 +101,10 @@ pub struct TerminalConfig<T: 'static + Send + Sync> {
     /// When set, `TerminalLayout` uses these exact values (no ceil rounding).
     /// The atlas is still rasterized at `font_size` — this only affects grid spacing.
     pub cell_size_override: Option<Vec2>,
+    /// Render layer for the terminal grid entities.
+    /// When set, `RenderLayers::layer(n)` is inserted on every cell entity
+    /// so that an off-screen camera on the same layer can capture them.
+    pub render_layer: Option<u8>,
     #[doc(hidden)]
     pub _marker: PhantomData<T>,
 }
@@ -117,6 +122,7 @@ impl<T: 'static + Send + Sync> Default for TerminalConfig<T> {
             z_layer: 0.0,
             receive_input: true,
             cell_size_override: None,
+            render_layer: None,
             _marker: PhantomData,
         }
     }
@@ -292,6 +298,7 @@ impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
                 effects::scatter::scatter_system::<T>,
                 effects::shiny::shiny_system::<T>,
                 effects::slash::slash_system::<T>,
+                effects::tint::tint_system::<T>,
                 effects::wave::wave_system::<T>,
             )
                 .in_set(TerminalSet::Effects),
@@ -316,6 +323,7 @@ fn clone_config<T: 'static + Send + Sync>(c: &TerminalConfig<T>) -> TerminalConf
         z_layer: c.z_layer,
         receive_input: c.receive_input,
         cell_size_override: c.cell_size_override,
+        render_layer: c.render_layer,
         _marker: PhantomData,
     }
 }
