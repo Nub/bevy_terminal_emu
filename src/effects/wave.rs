@@ -1,8 +1,5 @@
 use bevy::prelude::*;
 
-use super::{EffectRegion, TargetTerminal};
-use crate::grid::{GridPosition, TerminalCell};
-
 /// A simple sine wave effect that oscillates cells vertically.
 #[derive(Component, Clone, Debug)]
 pub struct Wave {
@@ -23,36 +20,6 @@ impl Default for Wave {
             wavelength: 8.0,
             speed: 4.0,
             horizontal: true,
-        }
-    }
-}
-
-/// System that applies the wave effect to cell transforms.
-pub fn wave_system<T: 'static + Send + Sync>(
-    time: Res<Time>,
-    effects: Query<(&Wave, &EffectRegion), With<TargetTerminal<T>>>,
-    mut cells: Query<(&GridPosition, &mut Transform), With<TerminalCell<T>>>,
-) {
-    let t = time.elapsed_secs();
-
-    for (wave, region) in effects.iter() {
-        let two_pi = std::f32::consts::TAU;
-
-        for (pos, mut transform) in cells.iter_mut() {
-            if !region.contains(pos.col, pos.row) {
-                continue;
-            }
-
-            let position_along = if wave.horizontal {
-                pos.col as f32
-            } else {
-                pos.row as f32
-            };
-
-            let displacement =
-                wave.amplitude * (two_pi * (position_along / wave.wavelength - wave.speed * t)).sin();
-
-            transform.translation.y += displacement;
         }
     }
 }

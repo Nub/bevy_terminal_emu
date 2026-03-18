@@ -2,19 +2,23 @@ pub mod atlas;
 pub mod backend;
 pub mod color;
 pub mod effects;
-pub mod grid;
 pub mod input;
-pub mod sync;
+pub mod render;
+pub mod render_effects;
+pub mod render_quad;
+pub mod render_sync;
 
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
 
+use bevy::asset::embedded_asset;
 use bevy::color::Color;
 use bevy::prelude::*;
+use bevy::sprite_render::Material2dPlugin;
 
 use backend::BevyBackend;
 use input::TerminalInputQueue;
-use sync::SyncGeneration;
+use render::TerminalMaterial;
+use render_sync::SyncGeneration;
 
 /// The embedded default font (JetBrains Mono Regular).
 const DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../assets/JetBrainsMono-Regular.ttf");
@@ -54,9 +58,8 @@ pub mod prelude {
     pub use crate::effects::explode::Explode;
     pub use crate::effects::glitch::Glitch;
     pub use crate::effects::glow::Glow;
-    pub use crate::effects::knock::Knock;
-    pub use crate::effects::gravity::{CellVelocity, Gravity};
     pub use crate::effects::jitter::Jitter;
+    pub use crate::effects::knock::Knock;
     pub use crate::effects::rainbow::Rainbow;
     pub use crate::effects::ripple::Ripple;
     pub use crate::effects::scatter::Scatter;
@@ -64,11 +67,8 @@ pub mod prelude {
     pub use crate::effects::slash::Slash;
     pub use crate::effects::wave::Wave;
     pub use crate::effects::{EffectRegion, GridRect, TargetTerminal};
-    pub use crate::grid::{
-        BackgroundSprite, BaseTransform, CellEntityIndex, CellStyle, ForegroundSprite,
-        GridPosition, TerminalCell,
-    };
     pub use crate::input::TerminalInputQueue;
+    pub use crate::render::{TerminalEffectUniforms, TerminalQuadEntity};
     pub use crate::{
         FontSource, TerminalConfig, TerminalEmuPlugin, TerminalLayout, TerminalResource,
         TerminalSet,
@@ -137,12 +137,6 @@ pub struct TerminalLayout<T: 'static + Send + Sync> {
 }
 
 impl<T: 'static + Send + Sync> TerminalLayout<T> {
-    /// Background sprite size with a small overlap to fill sub-pixel gaps.
-    /// Foreground sprites should use exact cell dimensions to avoid clipping.
-    pub fn bg_sprite_size(&self) -> Vec2 {
-        Vec2::new(self.cell_width + 0.5, self.cell_height + 0.5)
-    }
-
     /// Compute layout from config using font metrics.
     ///
     /// Cell dimensions are ceil'd to integer pixels so that foreground sprites
@@ -170,34 +164,30 @@ impl<T: 'static + Send + Sync> TerminalLayout<T> {
     }
 }
 
-/// Shared resource wrapping the ratatui Terminal<BevyBackend> in an Arc<Mutex<>>
-/// for access from both the ratatui app tick and the Bevy sync system.
-#[derive(Resource, Clone)]
+/// Resource wrapping the ratatui Terminal<BevyBackend>.
+///
+/// Lock-free: Bevy's resource system handles exclusive access via `ResMut`.
+#[derive(Resource)]
 pub struct TerminalResource<T: 'static + Send + Sync>(
-    pub Arc<Mutex<ratatui::Terminal<BevyBackend>>>,
+    pub ratatui::Terminal<BevyBackend>,
     PhantomData<T>,
 );
 
 impl<T: 'static + Send + Sync> TerminalResource<T> {
     pub fn new(terminal: ratatui::Terminal<BevyBackend>) -> Self {
-        Self(Arc::new(Mutex::new(terminal)), PhantomData)
+        Self(terminal, PhantomData)
     }
 }
 
 /// System sets for ordering terminal systems.
 ///
-/// Usage: add custom systems to `TerminalSet::AppTick` for your ratatui draw logic,
-/// or to `TerminalSet::Effects` for custom visual effects.
+/// Usage: add custom systems to `TerminalSet::AppTick` for your ratatui draw logic.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TerminalSet {
     /// User's ratatui draw + input handling runs here.
     AppTick,
-    /// Buffer → entity sync.
+    /// Buffer → GPU texture sync.
     Sync,
-    /// Reset transforms to base positions.
-    ResetTransforms,
-    /// All effects run here. Add custom effect systems to this set.
-    Effects,
 }
 
 /// The main plugin that sets up the terminal emulator.
@@ -228,28 +218,33 @@ impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
             .insert_resource(TerminalInputQueue::<T>::default())
             .insert_resource(SyncGeneration::<T>::default());
 
+        // Register Material2d plugin and embed shader once (shared across all terminal instances)
+        if !app.world().contains_resource::<TerminalMaterialPluginRegistered>() {
+            app.insert_resource(TerminalMaterialPluginRegistered);
+            embedded_asset!(app, "shaders/terminal.wgsl");
+            app.add_plugins(Material2dPlugin::<TerminalMaterial>::default());
+        }
+
         // Only configure system set ordering once (first plugin instance)
         if !app.world().contains_resource::<TerminalSetConfigured>() {
             app.insert_resource(TerminalSetConfigured);
             app.configure_sets(
                 Update,
-                (
-                    TerminalSet::AppTick,
-                    TerminalSet::Sync,
-                    TerminalSet::ResetTransforms,
-                    TerminalSet::Effects,
-                )
-                    .chain(),
+                (TerminalSet::AppTick, TerminalSet::Sync).chain(),
             );
         }
 
-        // Startup: generate atlas, then spawn grid (chained because grid needs atlas)
+        // Startup: generate atlas, then spawn quad (chained because quad needs atlas)
         app.add_systems(
             Startup,
-            (atlas::generate_font_atlas::<T>, grid::spawn_grid::<T>).chain(),
+            (
+                atlas::generate_font_atlas::<T>,
+                render_quad::spawn_terminal_quad::<T>,
+            )
+                .chain(),
         );
 
-        // Update systems in their respective sets
+        // Update systems
         if self.config.receive_input {
             app.add_systems(
                 Update,
@@ -262,39 +257,12 @@ impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
             (
                 atlas::expand_font_atlas::<T>,
                 atlas::rebuild_font_atlas::<T>,
-                sync::sync_buffer_to_entities::<T>,
+                render_sync::sync_buffer_to_texture::<T>,
+                render_sync::handle_atlas_update::<T>,
+                render_effects::aggregate_effects::<T>,
             )
                 .chain()
                 .in_set(TerminalSet::Sync),
-        )
-        .add_systems(
-            Update,
-            (
-                effects::reset_transforms::<T>,
-                effects::reset_colors::<T>,
-            )
-                .in_set(TerminalSet::ResetTransforms),
-        )
-        .add_systems(
-            Update,
-            (
-                effects::breathe::breathe_system::<T>,
-                effects::bubbly::bubbly_system::<T>,
-                effects::collapse::collapse_system::<T>,
-                effects::explode::explode_system::<T>,
-                effects::glitch::glitch_system::<T>,
-                effects::glow::glow_system::<T>,
-                effects::gravity::gravity_system::<T>,
-                effects::jitter::jitter_system::<T>,
-                effects::knock::knock_system::<T>,
-                effects::rainbow::rainbow_system::<T>,
-                effects::ripple::ripple_system::<T>,
-                effects::scatter::scatter_system::<T>,
-                effects::shiny::shiny_system::<T>,
-                effects::slash::slash_system::<T>,
-                effects::wave::wave_system::<T>,
-            )
-                .in_set(TerminalSet::Effects),
         );
     }
 }
@@ -302,6 +270,10 @@ impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
 /// Marker resource to ensure TerminalSet is only configured once.
 #[derive(Resource)]
 struct TerminalSetConfigured;
+
+/// Marker resource to ensure Material2dPlugin is only registered once.
+#[derive(Resource)]
+struct TerminalMaterialPluginRegistered;
 
 /// Clone a TerminalConfig without requiring T: Clone (T is only PhantomData).
 fn clone_config<T: 'static + Send + Sync>(c: &TerminalConfig<T>) -> TerminalConfig<T> {

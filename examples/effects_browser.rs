@@ -132,11 +132,6 @@ impl BrowserState {
                     active: false,
                 },
                 EffectEntry {
-                    name: "Gravity",
-                    description: "Continuous downward acceleration",
-                    active: false,
-                },
-                EffectEntry {
                     name: "Glitch",
                     description: "CRT-style horizontal row shift",
                     active: false,
@@ -207,7 +202,6 @@ fn handle_input(
     mut active: ResMut<ActiveEffectEntities>,
     mut config: ResMut<TerminalConfig<MyTerminal>>,
     mut commands: Commands,
-    cells: Query<Entity, With<TerminalCell<MyTerminal>>>,
 ) {
     while let Some(event) = queue.events.pop_front() {
         if let terminput::Event::Key(key_event) = event {
@@ -244,11 +238,6 @@ fn handle_input(
                     }
                     active.map.clear();
 
-                    // Remove CellVelocity from all cells (in case Gravity was active)
-                    for cell_entity in cells.iter() {
-                        commands.entity(cell_entity).remove::<CellVelocity>();
-                    }
-
                     // Re-activate effects that were toggled on so sync_effects respawns them
                     // (they're still marked active in state, but no longer in active.map)
                 }
@@ -272,7 +261,6 @@ fn sync_effects(
     mut commands: Commands,
     state: Res<BrowserState>,
     mut active: ResMut<ActiveEffectEntities>,
-    cells: Query<Entity, With<TerminalCell<MyTerminal>>>,
     mut collapses: Query<&mut Collapse>,
     mut scatters: Query<&mut Scatter>,
     mut slashes: Query<&mut Slash>,
@@ -290,27 +278,19 @@ fn sync_effects(
                 0 => commands.spawn((Wave::default(), region.clone(), target.clone())).id(),
                 1 => commands.spawn((Ripple::default(), region.clone(), target.clone())).id(),
                 2 => commands.spawn((Collapse::default(), region.clone(), target.clone())).id(),
-                3 => commands.spawn((Gravity::default(), region.clone(), target.clone())).id(),
-                4 => commands.spawn((Glitch::default(), region.clone(), target.clone())).id(),
-                5 => commands.spawn((Scatter::default(), region.clone(), target.clone())).id(),
-                6 => commands.spawn((Breathe::default(), region.clone(), target.clone())).id(),
-                7 => commands.spawn((Jitter::default(), region.clone(), target.clone())).id(),
-                8 => commands.spawn((Slash::default(), region.clone(), target.clone())).id(),
-                9 => commands.spawn((Explode::default(), region.clone(), target.clone())).id(),
-                10 => commands.spawn((Rainbow::default(), region.clone(), target.clone())).id(),
-                11 => commands.spawn((Glow::default(), region.clone(), target.clone())).id(),
-                12 => commands.spawn((Shiny::default(), region.clone(), target.clone())).id(),
-                13 => commands.spawn((Bubbly::default(), region.clone(), target.clone())).id(),
+                3 => commands.spawn((Glitch::default(), region.clone(), target.clone())).id(),
+                4 => commands.spawn((Scatter::default(), region.clone(), target.clone())).id(),
+                5 => commands.spawn((Breathe::default(), region.clone(), target.clone())).id(),
+                6 => commands.spawn((Jitter::default(), region.clone(), target.clone())).id(),
+                7 => commands.spawn((Slash::default(), region.clone(), target.clone())).id(),
+                8 => commands.spawn((Explode::default(), region.clone(), target.clone())).id(),
+                9 => commands.spawn((Rainbow::default(), region.clone(), target.clone())).id(),
+                10 => commands.spawn((Glow::default(), region.clone(), target.clone())).id(),
+                11 => commands.spawn((Shiny::default(), region.clone(), target.clone())).id(),
+                12 => commands.spawn((Bubbly::default(), region.clone(), target.clone())).id(),
                 _ => unreachable!(),
             };
             active.map.insert(idx, entity);
-
-            // Gravity needs CellVelocity on all cells
-            if idx == 3 {
-                for cell_entity in cells.iter() {
-                    commands.entity(cell_entity).insert(CellVelocity::default());
-                }
-            }
         } else if effect.active && is_spawned {
             // For one-shot effects: re-toggling resets the animation
             if idx == 2 {
@@ -323,7 +303,7 @@ fn sync_effects(
                     }
                 }
             }
-            if idx == 5 {
+            if idx == 4 {
                 if let Some(&entity) = active.map.get(&idx) {
                     if let Ok(mut scatter) = scatters.get_mut(entity) {
                         if !scatter.active {
@@ -333,7 +313,7 @@ fn sync_effects(
                     }
                 }
             }
-            if idx == 8 {
+            if idx == 7 {
                 if let Some(&entity) = active.map.get(&idx) {
                     if let Ok(mut slash) = slashes.get_mut(entity) {
                         if !slash.active {
@@ -343,7 +323,7 @@ fn sync_effects(
                     }
                 }
             }
-            if idx == 9 {
+            if idx == 8 {
                 if let Some(&entity) = active.map.get(&idx) {
                     if let Ok(mut explode) = explodes.get_mut(entity) {
                         if !explode.active {
@@ -354,25 +334,16 @@ fn sync_effects(
                 }
             }
         } else if !effect.active && is_spawned {
-            // Despawn the effect entity
             if let Some(entity) = active.map.remove(&idx) {
                 commands.entity(entity).despawn();
-            }
-
-            // Remove CellVelocity when Gravity is toggled off
-            if idx == 3 {
-                for cell_entity in cells.iter() {
-                    commands.entity(cell_entity).remove::<CellVelocity>();
-                }
             }
         }
     }
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>, state: Res<BrowserState>, config: Res<TerminalConfig<MyTerminal>>) {
-    let mut terminal = terminal_res.0.lock().unwrap();
+fn draw_ui(mut terminal_res: ResMut<TerminalResource<MyTerminal>>, state: Res<BrowserState>, config: Res<TerminalConfig<MyTerminal>>) {
 
-    terminal
+    terminal_res.0
         .draw(|frame| {
             let area = frame.area();
             let chunks = Layout::default()

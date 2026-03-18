@@ -24,10 +24,9 @@ fn setup_camera(mut commands: Commands) {
     ));
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>) {
-    let mut terminal = terminal_res.0.lock().unwrap();
+fn draw_ui(mut terminal_res: ResMut<TerminalResource<MyTerminal>>) {
 
-    terminal
+    terminal_res.0
         .draw(|frame| {
             let area = frame.area();
             let block = Block::default()
@@ -42,9 +41,8 @@ fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>) {
 fn debug_system(
     atlas: Res<FontAtlasResource<MyTerminal>>,
     images: Res<Assets<Image>>,
-    layouts: Res<Assets<TextureAtlasLayout>>,
-    fg_sprites: Query<&Sprite, With<ForegroundSprite<MyTerminal>>>,
-    bg_sprites: Query<&Sprite, With<BackgroundSprite<MyTerminal>>>,
+    quad: Res<TerminalQuadEntity<MyTerminal>>,
+    transforms: Query<&Transform>,
     mut frame_count: Local<u32>,
 ) {
     *frame_count += 1;
@@ -59,27 +57,18 @@ fn debug_system(
         info!("Atlas image size: {}x{}", img.width(), img.height());
     }
 
-    // Check if atlas layout is loaded
-    let layout_loaded = layouts.get(&atlas.layout).is_some();
-    info!("Atlas layout handle loaded: {}", layout_loaded);
-    if let Some(layout) = layouts.get(&atlas.layout) {
-        info!("Atlas layout size: {:?}, textures count: {}", layout.size, layout.textures.len());
+    info!("Atlas glyph count: {}", atlas.glyph_count);
+    info!("Atlas cell size: {:?}", atlas.cell_size);
+
+    // Check quad entity
+    if let Ok(transform) = transforms.get(quad.entity) {
+        info!("Quad entity {:?} at {:?}", quad.entity, transform.translation);
     }
 
-    // Check a FG sprite's image handle matches atlas
-    for sprite in fg_sprites.iter().take(1) {
-        let fg_img_matches = sprite.image == atlas.image;
-        info!("FG sprite image handle matches atlas: {}", fg_img_matches);
-        info!("FG sprite image == default: {}", sprite.image == Handle::default());
+    // Check cell data image
+    let cell_data_loaded = images.get(&quad.cell_data_image).is_some();
+    info!("Cell data image loaded: {}", cell_data_loaded);
+    if let Some(img) = images.get(&quad.cell_data_image) {
+        info!("Cell data image size: {}x{}", img.width(), img.height());
     }
-
-    // Check a BG sprite's image handle
-    for sprite in bg_sprites.iter().take(1) {
-        info!("BG sprite image == default: {}", sprite.image == Handle::default());
-        info!("BG sprite color: {:?}", sprite.color);
-        info!("BG sprite custom_size: {:?}", sprite.custom_size);
-    }
-
-    // Try spawning a test sprite manually to see if it renders
-    info!("=== If we can see the BG sprites, the grid cells should be visible at (-395..405, -230..230) ===");
 }

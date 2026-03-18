@@ -10,6 +10,7 @@ bevy = { version = "0.18", default-features = false, features = [
     "bevy_asset",
     "bevy_core_pipeline",
     "bevy_render",
+    "bevy_shader",
     "bevy_sprite",
     "bevy_sprite_render",
     "bevy_text",

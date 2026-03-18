@@ -4,9 +4,8 @@ pub mod collapse;
 pub mod explode;
 pub mod glitch;
 pub mod glow;
-pub mod knock;
-pub mod gravity;
 pub mod jitter;
+pub mod knock;
 pub mod rainbow;
 pub mod ripple;
 pub mod scatter;
@@ -17,8 +16,6 @@ pub mod wave;
 use std::marker::PhantomData;
 
 use bevy::prelude::*;
-
-use crate::grid::{BaseTransform, CellEntityIndex, CellStyle, ForegroundSprite, TerminalCell};
 
 /// A rectangle in grid coordinates.
 #[derive(Clone, Debug)]
@@ -110,63 +107,6 @@ impl<T: 'static + Send + Sync> Default for TargetTerminal<T> {
     fn default() -> Self {
         Self(PhantomData)
     }
-}
-
-/// System that resets all cell transforms to their base positions each frame.
-/// This runs before effects so they can additively modify transforms.
-///
-/// Skips the entire iteration when no effects are active, using a one-frame
-/// lag flag so we always do exactly one cleanup pass after effects despawn.
-pub fn reset_transforms<T: 'static + Send + Sync>(
-    effects: Query<(), With<TargetTerminal<T>>>,
-    mut had_effects: Local<bool>,
-    mut query: Query<(&BaseTransform, &mut Transform), With<TerminalCell<T>>>,
-) {
-    let has_effects = !effects.is_empty();
-
-    if *had_effects {
-        for (base, mut transform) in query.iter_mut() {
-            transform.translation = base.translation;
-            transform.rotation = base.rotation;
-            transform.scale = base.scale;
-        }
-    }
-
-    *had_effects = has_effects;
-}
-
-/// Resets foreground sprite colors to their CellStyle values each frame.
-/// Effects that modify sprite color (Glow, Rainbow, Shiny) run after this,
-/// so their changes last exactly one frame and don't accumulate.
-///
-/// Skips entirely when no effects are active — sync already sets fg colors
-/// for content changes, so this only needs to undo effect modifications.
-pub fn reset_colors<T: 'static + Send + Sync>(
-    effects: Query<(), With<TargetTerminal<T>>>,
-    mut had_effects: Local<bool>,
-    cell_index: Res<CellEntityIndex<T>>,
-    cell_query: Query<&CellStyle, With<TerminalCell<T>>>,
-    mut fg_query: Query<&mut Sprite, With<ForegroundSprite<T>>>,
-) {
-    let has_effects = !effects.is_empty();
-
-    if *had_effects {
-        for (idx, &parent_entity) in cell_index.entities.iter().enumerate() {
-            let Ok(cell_style) = cell_query.get(parent_entity) else {
-                continue;
-            };
-            let fg_entity = cell_index.fg_entities[idx];
-            if let Ok(mut fg_sprite) = fg_query.get_mut(fg_entity) {
-                fg_sprite.color = if cell_style.dim {
-                    cell_style.fg.with_alpha(0.5)
-                } else {
-                    cell_style.fg
-                };
-            }
-        }
-    }
-
-    *had_effects = has_effects;
 }
 
 /// Deterministic xor-shift hash for procedural effects (Glitch, Jitter).

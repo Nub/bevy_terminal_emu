@@ -37,10 +37,9 @@ fn handle_input(mut queue: ResMut<TerminalInputQueue<MyTerminal>>, mut counter: 
     }
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>, counter: Res<Counter>) {
-    let mut terminal = terminal_res.0.lock().unwrap();
+fn draw_ui(mut terminal_res: ResMut<TerminalResource<MyTerminal>>, counter: Res<Counter>) {
 
-    terminal
+    terminal_res.0
         .draw(|frame| {
             let area = frame.area();
             let block = Block::default()

@@ -19,10 +19,9 @@ fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
-fn draw_ui(terminal_res: Res<TerminalResource<MyTerminal>>) {
-    let mut terminal = terminal_res.0.lock().unwrap();
+fn draw_ui(mut terminal_res: ResMut<TerminalResource<MyTerminal>>) {
 
-    terminal
+    terminal_res.0
         .draw(|frame| {
             let area = frame.area();
             let block = Block::default()
