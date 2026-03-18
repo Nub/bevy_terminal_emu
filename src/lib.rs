@@ -182,8 +182,13 @@ impl<T: 'static + Send + Sync> TerminalResource<T> {
 /// System sets for ordering terminal systems.
 ///
 /// Usage: add custom systems to `TerminalSet::AppTick` for your ratatui draw logic.
+/// Use `TerminalSet::Init` to order Startup systems that depend on the terminal
+/// layout being fully computed (atlas generated, quad spawned).
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TerminalSet {
+    /// Startup set: atlas generation and quad spawn run here.
+    /// Schedule your render-texture / camera setup `.after(TerminalSet::Init)`.
+    Init,
     /// User's ratatui draw + input handling runs here.
     AppTick,
     /// Buffer → GPU texture sync.
@@ -234,14 +239,16 @@ impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
             );
         }
 
-        // Startup: generate atlas, then spawn quad (chained because quad needs atlas)
+        // Startup: generate atlas, then spawn quad (chained because quad needs atlas).
+        // Both are in TerminalSet::Init so downstream code can order after them.
         app.add_systems(
             Startup,
             (
                 atlas::generate_font_atlas::<T>,
                 render_quad::spawn_terminal_quad::<T>,
             )
-                .chain(),
+                .chain()
+                .in_set(TerminalSet::Init),
         );
 
         // Update systems
