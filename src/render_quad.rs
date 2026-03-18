@@ -80,3 +80,43 @@ pub fn spawn_terminal_quad<T: 'static + Send + Sync>(
         cell_data_handle,
     ));
 }
+
+/// Update system: resize the quad mesh, transform, and material grid params
+/// when `TerminalLayout` changes (e.g. due to font size change).
+pub fn resize_terminal_quad<T: 'static + Send + Sync>(
+    config: Res<TerminalConfig<T>>,
+    layout: Res<TerminalLayout<T>>,
+    quad: Res<TerminalQuadEntity<T>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<TerminalMaterial>>,
+    mut transforms: Query<(&Mesh2d, &mut Transform)>,
+) {
+    if !layout.is_changed() {
+        return;
+    }
+
+    let cols = config.columns as f32;
+    let rows = config.rows as f32;
+    let quad_width = cols * layout.cell_width;
+    let quad_height = rows * layout.cell_height;
+
+    // Update the mesh to the new size
+    if let Ok((mesh2d, mut transform)) = transforms.get_mut(quad.entity) {
+        let new_mesh = Rectangle::new(quad_width, quad_height);
+        if let Some(mesh) = meshes.get_mut(&mesh2d.0) {
+            *mesh = Mesh::from(new_mesh);
+        }
+
+        // Update position to match new layout origin
+        let center_x = layout.origin.x + quad_width / 2.0;
+        let center_y = layout.origin.y - quad_height / 2.0;
+        transform.translation.x = center_x;
+        transform.translation.y = center_y;
+    }
+
+    // Update cell dimensions in material grid params
+    if let Some(mat) = materials.get_mut(&quad.material_handle) {
+        mat.grid_params.cell_width = layout.cell_width;
+        mat.grid_params.cell_height = layout.cell_height;
+    }
+}

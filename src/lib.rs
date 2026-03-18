@@ -257,6 +257,7 @@ impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
             (
                 atlas::expand_font_atlas::<T>,
                 atlas::rebuild_font_atlas::<T>,
+                render_quad::resize_terminal_quad::<T>,
                 render_sync::sync_buffer_to_texture::<T>,
                 render_sync::handle_atlas_update::<T>,
                 render_effects::aggregate_effects::<T>,
