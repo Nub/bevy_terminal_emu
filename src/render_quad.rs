@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use ratatui::backend::Backend;
 use bevy::sprite_render::MeshMaterial2d;
 
 use crate::atlas::FontAtlasResource;
@@ -119,4 +120,36 @@ pub fn resize_terminal_quad<T: 'static + Send + Sync>(
         mat.grid_params.cell_width = layout.cell_width;
         mat.grid_params.cell_height = layout.cell_height;
     }
+}
+
+/// Update system: when `TerminalConfig.columns` / `rows` change, resize the ratatui terminal, its backend and the
+/// cell data texture, and recompute the layout (which `resize_terminal_quad` then follows).
+pub fn resize_terminal_grid<T: 'static + Send + Sync>(
+    config: Res<TerminalConfig<T>>,
+    mut layout: ResMut<TerminalLayout<T>>,
+    mut terminal_res: ResMut<crate::TerminalResource<T>>,
+    atlas: Option<Res<crate::atlas::FontAtlasResource<T>>>,
+    quad: Option<Res<TerminalQuadEntity<T>>>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<TerminalMaterial>>,
+) {
+    let (Some(atlas), Some(quad)) = (atlas, quad) else { return };
+    let size = terminal_res.0.backend().size().unwrap_or_default();
+    if (size.width, size.height) == (config.columns, config.rows) {
+        return;
+    }
+    let (cols, rows) = (config.columns, config.rows);
+    terminal_res.0.backend_mut().resize(cols, rows);
+    // The terminal's own buffers follow the backend (a full-screen viewport resizes and clears).
+    let _ = terminal_res.0.resize(ratatui::layout::Rect::new(0, 0, cols, rows));
+    if let Some(image) = images.get_mut(&quad.cell_data_image) {
+        *image = create_cell_data_image(cols, rows);
+    }
+    if let Some(mat) = materials.get_mut(&quad.material_handle) {
+        mat.grid_params.columns = cols as u32;
+        mat.grid_params.rows = rows as u32;
+    }
+    crate::atlas::align_layout_to_atlas(&mut layout, &config, atlas.cell_size, atlas.scale_factor);
+    // A changed layout makes resize_terminal_quad size the quad to the new grid.
+    layout.set_changed();
 }

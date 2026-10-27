@@ -146,7 +146,7 @@ fn build_atlas_data_for_chars(font_bytes: &[u8], font_size: f32, chars: &[char])
 /// equals the atlas cell texel count.  This guarantees 1:1 texel-to-physical-pixel
 /// mapping on the sprite quad (no stretching / blurriness).
 /// The origin is also snapped to physical pixel boundaries.
-fn align_layout_to_atlas<T: 'static + Send + Sync>(
+pub(crate) fn align_layout_to_atlas<T: 'static + Send + Sync>(
     layout: &mut crate::TerminalLayout<T>,
     config: &crate::TerminalConfig<T>,
     atlas_cell_size: UVec2,

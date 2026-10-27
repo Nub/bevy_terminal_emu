@@ -64,6 +64,18 @@ impl BevyBackend {
         self.dirty_cells.fill(false);
     }
 
+    /// Change the grid to `width` x `height`. The contents are cleared (the next draw fills them) and every cell is
+    /// marked dirty.
+    pub fn resize(&mut self, width: u16, height: u16) {
+        let size = width as usize * height as usize;
+        self.width = width;
+        self.height = height;
+        self.buffer = vec![Cell::default(); size];
+        self.dirty_cells = vec![true; size];
+        self.cursor = Position { x: self.cursor.x.min(width.saturating_sub(1)), y: self.cursor.y.min(height.saturating_sub(1)) };
+        self.flush_generation += 1;
+    }
+
     /// Mark all cells as dirty (e.g. after atlas expansion requires full re-sync).
     /// Also bumps the generation so the sync system processes the changes even
     /// without a new `Terminal::draw()` call from the user.
@@ -192,6 +204,18 @@ impl Backend for BevyBackend {
 mod tests {
     use super::*;
     use ratatui::Terminal;
+
+    #[test]
+    fn resize_changes_the_size_and_dirties_every_cell() {
+        let mut backend = BevyBackend::new(80, 24);
+        backend.clear_dirty();
+        let generation = backend.generation();
+        backend.resize(40, 12);
+        assert_eq!(backend.size().unwrap(), Size { width: 40, height: 12 });
+        assert_eq!(backend.buffer().len(), 40 * 12);
+        assert!(backend.dirty_cells().iter().all(|&d| d));
+        assert!(backend.generation() > generation);
+    }
 
     #[test]
     fn test_backend_size() {

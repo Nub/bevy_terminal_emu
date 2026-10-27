@@ -262,6 +262,7 @@ impl<T: 'static + Send + Sync> Plugin for TerminalEmuPlugin<T> {
         app.add_systems(
             Update,
             (
+                render_quad::resize_terminal_grid::<T>,
                 atlas::expand_font_atlas::<T>,
                 atlas::rebuild_font_atlas::<T>,
                 render_quad::resize_terminal_quad::<T>,
